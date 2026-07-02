@@ -1,14 +1,25 @@
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-
-const turmasMock = [
-  { id: "1", nome: "7ª A", anoLetivo: "2026", totalAlunos: 24 },
-  { id: "2", nome: "8ª B", anoLetivo: "2026", totalAlunos: 21 },
-  { id: "3", nome: "9ª C", anoLetivo: "2026", totalAlunos: 26 },
-];
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 
 export default function TurmasScreen() {
   const router = useRouter();
+  const [turmas, setTurmas] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, "turmas"), (snapshot) => {
+      const lista = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setTurmas(lista);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
   return (
     <ScrollView className="flex-1 bg-gray-50">
@@ -19,8 +30,16 @@ export default function TurmasScreen() {
         <Text className="text-white text-2xl font-bold">Turmas</Text>
       </View>
 
-      <View className="px-6 pt-6 gap-3">
-        {turmasMock.map((turma) => (
+      <View className="px-6 pt-6 gap-3 pb-8">
+        {loading && <ActivityIndicator size="large" color="#0f172a" className="mt-6" />}
+
+        {!loading && turmas.length === 0 && (
+          <Text className="text-gray-400 text-center mt-6">
+            Ainda não há turmas criadas.
+          </Text>
+        )}
+
+        {turmas.map((turma) => (
           <TouchableOpacity
             key={turma.id}
             onPress={() => router.push(`/turmas/${turma.id}`)}
@@ -31,7 +50,7 @@ export default function TurmasScreen() {
                 {turma.nome}
               </Text>
               <Text className="text-gray-500 text-sm mt-1">
-                {turma.totalAlunos} alunos • Ano letivo {turma.anoLetivo}
+                Sala {turma.sala} • Ano letivo {turma.ano_letivo}
               </Text>
             </View>
             <Text className="text-gray-400 text-lg">›</Text>
