@@ -1,20 +1,8 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-
-const alunoMock = {
-  nome: "Ana Silva",
-  numeroProcesso: "2026001",
-  turma: "7ª A",
-};
-
-const historicoMock = [
-  { id: "1", tipo: "falta", data: "28 Jun", descricao: "Falta não justificada" },
-  { id: "2", tipo: "chamada_atencao", data: "25 Jun", descricao: "Conversa em sala de aula", gravidade: "leve" },
-  { id: "3", tipo: "presente", data: "24 Jun", descricao: "Presente" },
-  { id: "4", tipo: "atraso", data: "20 Jun", descricao: "Chegou 15 min atrasada" },
-  { id: "5", tipo: "chamada_atencao", data: "15 Jun", descricao: "Falta de material escolar", gravidade: "media" },
-];
+import { doc, onSnapshot, collection, query, where, orderBy } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
 
 const CONFIG_TIPO = {
   presente: { label: "Presença", cor: "bg-emerald-100", corTexto: "text-emerald-700" },
@@ -29,15 +17,54 @@ const FILTROS = [
   { key: "chamada_atencao", label: "Chamadas" },
 ];
 
+function formatarData(timestamp) {
+  if (!timestamp?.toDate) return "";
+  const data = timestamp.toDate();
+  return data.toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
+}
+
 export default function HistoricoAlunoScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [filtro, setFiltro] = useState("todos");
+  const [aluno, setAluno] = useState(null);
+  const [presencas, setPresencas] = useState([]);
+  const [chamadas, setChamadas] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsubAluno = onSnapshot(doc(db, "alunos", id), (docSnap) => {
+      if (docSnap.exists()) setAluno({ id: docSnap.id, ...docSnap.data() });
+    });
+    return unsubAluno;
+  }, [id]);
+
+  useEffect(() => {
+    const qPresencas = query(collection(db, "presencas"), where("aluno_id", "==", id));
+    const unsubPresencas = onSnapshot(qPresencas, (snapshot) => {
+      setPresencas(snapshot.docs.map((d) => ({ id: d.id, tipo: d.data().estado, ...d.data() })));
+    });
+
+    const qChamadas = query(collection(db, "chamadas_atencao"), where("aluno_id", "==", id));
+    const unsubChamadas = onSnapshot(qChamadas, (snapshot) => {
+      setChamadas(snapshot.docs.map((d) => ({ id: d.id, tipo: "chamada_atencao", descricao: d.data().motivo, ...d.data() })));
+      setLoading(false);
+    });
+
+    return () => {
+      unsubPresencas();
+      unsubChamadas();
+    };
+  }, [id]);
+
+  const historico = [...presencas, ...chamadas].sort((a, b) => {
+    const dataA = a.data?.toDate ? a.data.toDate() : new Date(0);
+    const dataB = b.data?.toDate ? b.data.toDate() : new Date(0);
+    return dataB - dataA;
+  });
 
   const historicoFiltrado =
-    filtro === "todos"
-      ? historicoMock
-      : historicoMock.filter((item) => item.tipo === filtro);
+    filtro === "todos" ? historico : historico.filter((item) => item.tipo === filtro);
 
   return (
     <ScrollView className="flex-1 bg-gray-50">
@@ -45,13 +72,12 @@ export default function HistoricoAlunoScreen() {
         <TouchableOpacity onPress={() => router.back()} className="mb-3">
           <Text className="text-gray-300">‹ Voltar</Text>
         </TouchableOpacity>
-        <Text className="text-white text-2xl font-bold">{alunoMock.nome}</Text>
+        <Text className="text-white text-2xl font-bold">{aluno?.nome || "..."}</Text>
         <Text className="text-gray-300 mt-1">
-          {alunoMock.turma} • Nº {alunoMock.numeroProcesso} (ID: {id})
+          Nº {aluno?.numero_processo || "-"}
         </Text>
       </View>
 
-      {/* Filtros */}
       <View className="flex-row gap-2 px-6 pt-6">
         {FILTROS.map((f) => {
           const ativo = filtro === f.key;
@@ -71,7 +97,6 @@ export default function HistoricoAlunoScreen() {
         })}
       </View>
 
-      {/* Botão adicionar chamada de atenção */}
       <View className="px-6 pt-4">
         <TouchableOpacity
           onPress={() => router.push(`/chamada-atencao/${id}`)}
@@ -83,35 +108,33 @@ export default function HistoricoAlunoScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Linha do tempo */}
       <View className="px-6 pt-6 pb-8 gap-3">
-        {historicoFiltrado.map((item) => {
-          const config = CONFIG_TIPO[item.tipo];
-          return (
-            <View
-              key={item.id}
-              className="bg-white rounded-xl p-4 border border-gray-200"
-            >
-              <View className="flex-row justify-between items-start">
-                <View
-                  className={`${config.cor} rounded-full px-3 py-1 self-start`}
-                >
-                  <Text className={`${config.corTexto} text-xs font-semibold`}>
-                    {config.label}
-                  </Text>
-                </View>
-                <Text className="text-gray-400 text-xs">{item.data}</Text>
-              </View>
-              <Text className="text-slate-900 text-sm mt-2">{item.descricao}</Text>
-            </View>
-          );
-        })}
+        {loading && <ActivityIndicator size="large" color="#0f172a" className="mt-4" />}
 
-        {historicoFiltrado.length === 0 && (
+        {!loading && historicoFiltrado.length === 0 && (
           <Text className="text-gray-400 text-center mt-4">
             Sem registos para este filtro.
           </Text>
         )}
+
+        {historicoFiltrado.map((item) => {
+          const config = CONFIG_TIPO[item.tipo];
+          return (
+            <View key={item.id} className="bg-white rounded-xl p-4 border border-gray-200">
+              <View className="flex-row justify-between items-start">
+                <View className={`${config.cor} rounded-full px-3 py-1 self-start`}>
+                  <Text className={`${config.corTexto} text-xs font-semibold`}>
+                    {config.label}
+                  </Text>
+                </View>
+                <Text className="text-gray-400 text-xs">{formatarData(item.data)}</Text>
+              </View>
+              <Text className="text-slate-900 text-sm mt-2">
+                {item.descricao || config.label}
+              </Text>
+            </View>
+          );
+        })}
       </View>
     </ScrollView>
   );

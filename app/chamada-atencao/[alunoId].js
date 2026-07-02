@@ -1,6 +1,9 @@
 import { useState } from "react";
-import { View, Text, ScrollView, TextInput, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { addDoc, collection } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
+import { useAuth } from "../../context/AuthContext";
 
 const GRAVIDADES = [
   { key: "leve", label: "Leve", cor: "bg-amber-500" },
@@ -11,16 +14,39 @@ const GRAVIDADES = [
 export default function NovaChamadaAtencaoScreen() {
   const router = useRouter();
   const { alunoId } = useLocalSearchParams();
+  const { user } = useAuth();
 
   const [motivo, setMotivo] = useState("");
   const [gravidade, setGravidade] = useState("leve");
   const [descricao, setDescricao] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  const guardar = () => {
-    const registo = { alunoId, motivo, gravidade, descricao, data: new Date() };
-    console.log("Chamada de atenção a guardar:", registo);
-    // Mais à frente: gravar no Firebase + notificar o encarregado
-    router.back();
+  const guardar = async () => {
+    if (!motivo || !descricao) {
+      Alert.alert("Atenção", "Preenche o motivo e a descrição.");
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      await addDoc(collection(db, "chamadas_atencao"), {
+        aluno_id: alunoId,
+        motivo,
+        gravidade,
+        descricao,
+        registado_por: user?.uid || "",
+        data: new Date(),
+        encarregado_notificado: false,
+        criado_em: new Date(),
+      });
+      Alert.alert("Sucesso", "Chamada de atenção registada!");
+      router.back();
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível guardar.");
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -79,10 +105,18 @@ export default function NovaChamadaAtencaoScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity onPress={guardar} className="bg-slate-900 rounded-lg py-4 mb-8">
-          <Text className="text-white text-center font-semibold text-base">
-            Guardar e Notificar
-          </Text>
+        <TouchableOpacity
+          onPress={guardar}
+          disabled={salvando}
+          className="bg-slate-900 rounded-lg py-4 mb-8"
+        >
+          {salvando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-white text-center font-semibold text-base">
+              Guardar e Notificar
+            </Text>
+          )}
         </TouchableOpacity>
       </View>
     </ScrollView>
