@@ -39,18 +39,18 @@ export default function DashboardScreen() {
       {/* Cabeçalho */}
       <View className="bg-slate-900 pt-14 pb-6 px-6">
         <View className="flex-row justify-between items-start gap-3">
-  <View className="flex-1">
-    <Text className="text-white text-xl font-bold" numberOfLines={1}>
-      Olá, {userData?.nome || user.email}! 👋
-    </Text>
-    <Text className="text-gray-300 mt-1">
-      {ROLE_LABEL[userData?.role] || "Utilizador"}
-    </Text>
-  </View>
-  <TouchableOpacity onPress={terminarSessao} className="shrink-0">
-    <Text className="text-gray-300 text-sm">Sair</Text>
-  </TouchableOpacity>
-</View>
+          <View className="flex-1">
+            <Text className="text-white text-xl font-bold" numberOfLines={1}>
+              Olá, {userData?.nome || user.email}! 👋
+            </Text>
+            <Text className="text-gray-300 mt-1">
+              {ROLE_LABEL[userData?.role] || "Utilizador"}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={terminarSessao} className="shrink-0">
+            <Text className="text-gray-300 text-sm">Sair</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Conteúdo */}
@@ -75,6 +75,16 @@ export default function DashboardScreen() {
         </Text>
 
         <View className="gap-3 pb-8">
+          {userData?.role === "admin" && (
+            <TouchableOpacity
+              onPress={() => router.push("/admin")}
+              className="bg-slate-900 rounded-xl p-4 flex-row justify-between items-center"
+            >
+              <Text className="text-base text-white font-medium">⚙️ Painel de Administração</Text>
+              <Text className="text-gray-300">›</Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             onPress={() => router.push("/turmas")}
             className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
