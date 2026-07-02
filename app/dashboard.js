@@ -102,9 +102,9 @@ export default function DashboardScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            onPress={() => router.push("/chamadas-atencao")}
-            className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
-          >
+  onPress={() => router.push("/registar-presenca")}
+  className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
+>
             <Text className="text-base text-slate-900 font-medium">Chamadas de Atenção</Text>
             <Text className="text-gray-400">›</Text>
           </TouchableOpacity>
