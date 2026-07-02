@@ -1,12 +1,9 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Modal } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TextInput, TouchableOpacity, Modal, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
-
-const reunioesMock = [
-  { id: "1", titulo: "Reunião trimestral - 7ª A", tipo: "pais", data: "05 Jul, 14:00", local: "Sala 12", estado: "confirmada" },
-  { id: "2", titulo: "Reunião sobre comportamento - Bruno Costa", tipo: "pais", data: "08 Jul, 10:00", local: "Gabinete", estado: "pendente" },
-  { id: "3", titulo: "Reunião de professores - Fim de período", tipo: "pessoal", data: "10 Jul, 16:00", local: "Sala dos Professores", estado: "confirmada" },
-];
+import { collection, query, orderBy, onSnapshot, addDoc } from "firebase/firestore";
+import { db } from "../firebaseConfig";
+import { useAuth } from "../context/AuthContext";
 
 const CONFIG_ESTADO = {
   confirmada: { label: "Confirmada", cor: "bg-emerald-100", corTexto: "text-emerald-700" },
@@ -14,20 +11,62 @@ const CONFIG_ESTADO = {
   recusada: { label: "Recusada", cor: "bg-red-100", corTexto: "text-red-700" },
 };
 
+function formatarData(timestamp) {
+  if (!timestamp?.toDate) return "";
+  return timestamp.toDate().toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
+}
+
 export default function ReunioesScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const [reunioes, setReunioes] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [modalVisivel, setModalVisivel] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [data, setData] = useState("");
   const [local, setLocal] = useState("");
+  const [salvando, setSalvando] = useState(false);
 
-  const criarReuniao = () => {
-    console.log("Nova reunião:", { titulo, data, local });
-    // Mais à frente: gravar no Firebase + notificar participantes
-    setModalVisivel(false);
-    setTitulo("");
-    setData("");
-    setLocal("");
+  useEffect(() => {
+    const q = query(collection(db, "reunioes"), orderBy("criado_em", "desc"));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const lista = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setReunioes(lista);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  const criarReuniao = async () => {
+    if (!titulo || !data || !local) {
+      Alert.alert("Atenção", "Preenche todos os campos.");
+      return;
+    }
+    setSalvando(true);
+    try {
+      await addDoc(collection(db, "reunioes"), {
+        tipo: "pais",
+        titulo,
+        data,
+        local,
+        motivo: "",
+        aluno_id: "",
+        participantes_ids: [],
+        estado: "pendente",
+        criado_por: user?.uid || "",
+        criado_em: new Date(),
+      });
+      setModalVisivel(false);
+      setTitulo("");
+      setData("");
+      setLocal("");
+      Alert.alert("Sucesso", "Reunião agendada!");
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível agendar a reunião.");
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -49,9 +88,17 @@ export default function ReunioesScreen() {
           </Text>
         </TouchableOpacity>
 
+        {loading && <ActivityIndicator size="large" color="#0f172a" className="mb-6" />}
+
+        {!loading && reunioes.length === 0 && (
+          <Text className="text-gray-400 text-center mb-6">
+            Ainda não há reuniões agendadas.
+          </Text>
+        )}
+
         <View className="gap-3 pb-8">
-          {reunioesMock.map((reuniao) => {
-            const estado = CONFIG_ESTADO[reuniao.estado];
+          {reunioes.map((reuniao) => {
+            const estado = CONFIG_ESTADO[reuniao.estado] || CONFIG_ESTADO.pendente;
             return (
               <View
                 key={reuniao.id}
@@ -79,7 +126,6 @@ export default function ReunioesScreen() {
         </View>
       </View>
 
-      {/* Modal para criar reunião */}
       <Modal visible={modalVisivel} animationType="slide" transparent>
         <View className="flex-1 bg-black/40 justify-end">
           <View className="bg-white rounded-t-2xl p-6">
@@ -111,8 +157,16 @@ export default function ReunioesScreen() {
               className="border border-gray-300 rounded-lg px-4 py-3 mb-6 text-base"
             />
 
-            <TouchableOpacity onPress={criarReuniao} className="bg-slate-900 rounded-lg py-4 mb-3">
-              <Text className="text-white text-center font-semibold">Agendar e Notificar</Text>
+            <TouchableOpacity
+              onPress={criarReuniao}
+              disabled={salvando}
+              className="bg-slate-900 rounded-lg py-4 mb-3"
+            >
+              {salvando ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text className="text-white text-center font-semibold">Agendar e Notificar</Text>
+              )}
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setModalVisivel(false)}>

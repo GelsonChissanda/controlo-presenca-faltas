@@ -1,12 +1,8 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-
-const chamadasMock = [
-  { id: "1", aluno: "Bruno Costa", alunoId: "2", turma: "7ª A", motivo: "Falta de material escolar", gravidade: "media", data: "28 Jun" },
-  { id: "2", aluno: "Ana Silva", alunoId: "1", turma: "7ª A", motivo: "Conversa em sala de aula", gravidade: "leve", data: "25 Jun" },
-  { id: "3", aluno: "Carla Mendes", alunoId: "3", turma: "8ª B", motivo: "Falta de respeito a colega", gravidade: "grave", data: "20 Jun" },
-];
+import { collection, query, orderBy, onSnapshot, doc, getDoc } from "firebase/firestore";
+import { db } from "../firebaseConfig";
 
 const CONFIG_GRAVIDADE = {
   leve: { label: "Leve", cor: "bg-amber-100", corTexto: "text-amber-700" },
@@ -21,14 +17,39 @@ const FILTROS = [
   { key: "grave", label: "Graves" },
 ];
 
+function formatarData(timestamp) {
+  if (!timestamp?.toDate) return "";
+  return timestamp.toDate().toLocaleDateString("pt-PT", { day: "2-digit", month: "short" });
+}
+
 export default function ChamadasAtencaoScreen() {
   const router = useRouter();
   const [filtro, setFiltro] = useState("todos");
+  const [chamadas, setChamadas] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const q = query(collection(db, "chamadas_atencao"), orderBy("data", "desc"));
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const lista = await Promise.all(
+        snapshot.docs.map(async (docSnap) => {
+          const dados = docSnap.data();
+          let nomeAluno = "Aluno";
+          try {
+            const alunoSnap = await getDoc(doc(db, "alunos", dados.aluno_id));
+            if (alunoSnap.exists()) nomeAluno = alunoSnap.data().nome;
+          } catch (e) {}
+          return { id: docSnap.id, ...dados, nomeAluno };
+        })
+      );
+      setChamadas(lista);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
   const chamadasFiltradas =
-    filtro === "todos"
-      ? chamadasMock
-      : chamadasMock.filter((c) => c.gravidade === filtro);
+    filtro === "todos" ? chamadas : chamadas.filter((c) => c.gravidade === filtro);
 
   return (
     <ScrollView className="flex-1 bg-gray-50">
@@ -39,7 +60,6 @@ export default function ChamadasAtencaoScreen() {
         <Text className="text-white text-2xl font-bold">Chamadas de Atenção</Text>
       </View>
 
-      {/* Filtros */}
       <View className="flex-row flex-wrap gap-2 px-6 pt-6">
         {FILTROS.map((f) => {
           const ativo = filtro === f.key;
@@ -60,12 +80,20 @@ export default function ChamadasAtencaoScreen() {
       </View>
 
       <View className="px-6 pt-6 pb-8 gap-3">
+        {loading && <ActivityIndicator size="large" color="#0f172a" className="mt-6" />}
+
+        {!loading && chamadasFiltradas.length === 0 && (
+          <Text className="text-gray-400 text-center mt-6">
+            Sem chamadas de atenção para este filtro.
+          </Text>
+        )}
+
         {chamadasFiltradas.map((c) => {
           const gravidade = CONFIG_GRAVIDADE[c.gravidade];
           return (
             <TouchableOpacity
               key={c.id}
-              onPress={() => router.push(`/aluno/${c.alunoId}`)}
+              onPress={() => router.push(`/aluno/${c.aluno_id}`)}
               className="bg-white rounded-xl p-4 border border-gray-200"
             >
               <View className="flex-row justify-between items-start mb-2">
@@ -74,21 +102,13 @@ export default function ChamadasAtencaoScreen() {
                     {gravidade.label}
                   </Text>
                 </View>
-                <Text className="text-gray-400 text-xs">{c.data}</Text>
+                <Text className="text-gray-400 text-xs">{formatarData(c.data)}</Text>
               </View>
-              <Text className="text-slate-900 font-semibold text-base">
-                {c.aluno} <Text className="text-gray-400 font-normal">• {c.turma}</Text>
-              </Text>
+              <Text className="text-slate-900 font-semibold text-base">{c.nomeAluno}</Text>
               <Text className="text-gray-500 text-sm mt-1">{c.motivo}</Text>
             </TouchableOpacity>
           );
         })}
-
-        {chamadasFiltradas.length === 0 && (
-          <Text className="text-gray-400 text-center mt-4">
-            Sem chamadas de atenção para este filtro.
-          </Text>
-        )}
       </View>
     </ScrollView>
   );
