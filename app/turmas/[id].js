@@ -24,9 +24,10 @@ export default function AlunosDaTurmaScreen() {
       <View className="px-6 pt-6 gap-3">
         {alunosMock.map((aluno) => (
           <TouchableOpacity
-            key={aluno.id}
-            className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
-          >
+  key={aluno.id}
+  onPress={() => router.push(`/aluno/${aluno.id}`)}
+  className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
+>
             <View>
               <Text className="text-base font-semibold text-slate-900">
                 {aluno.nome}

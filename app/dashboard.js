@@ -44,10 +44,11 @@ export default function DashboardScreen() {
             <Text className="text-gray-400">›</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center">
-            <Text className="text-base text-slate-900 font-medium">
-              Registar Presença
-            </Text>
+         <TouchableOpacity
+  onPress={() => router.push("/chamada/1")}
+  className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
+>
+  <Text className="text-base text-slate-900 font-medium">Registar Presença</Text>
             <Text className="text-gray-400">›</Text>
           </TouchableOpacity>
 
