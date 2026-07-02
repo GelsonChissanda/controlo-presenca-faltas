@@ -40,7 +40,7 @@ export default function LoginScreen() {
       <TextInput
         value={email}
         onChangeText={setEmail}
-        placeholder="o-teu-email@exemplo.com"
+        placeholder="Ex: gelsonchissanda@gmail.com"
         keyboardType="email-address"
         autoCapitalize="none"
         className="border border-gray-300 rounded-lg px-4 py-3 mb-4 text-base"
