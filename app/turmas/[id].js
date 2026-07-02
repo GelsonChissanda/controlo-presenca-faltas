@@ -3,12 +3,28 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "rea
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { collection, query, where, onSnapshot } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
+import { exportarPresencasDaTurma } from "../../utils/exportarExcel";
+import { doc, getDoc } from "firebase/firestore";
 
 export default function AlunosDaTurmaScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const [alunos, setAlunos] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [exportando, setExportando] = useState(false);
+
+const exportar = async () => {
+  setExportando(true);
+  try {
+    const turmaSnap = await getDoc(doc(db, "turmas", id));
+    const nomeTurma = turmaSnap.data()?.nome || "Turma";
+    await exportarPresencasDaTurma(id, nomeTurma, alunos);
+  } catch (error) {
+    console.log(error);
+  } finally {
+    setExportando(false);
+  }
+};
 
   useEffect(() => {
     const q = query(collection(db, "alunos"), where("turma_id", "==", id));
@@ -31,6 +47,18 @@ export default function AlunosDaTurmaScreen() {
         </TouchableOpacity>
         <Text className="text-white text-2xl font-bold">Alunos</Text>
       </View>
+
+      <View className="px-6 pt-6">
+  <TouchableOpacity
+    onPress={exportar}
+    disabled={exportando || alunos.length === 0}
+    className="bg-emerald-700 rounded-lg py-3 mb-3"
+  >
+    <Text className="text-white text-center font-semibold">
+      {exportando ? "A exportar..." : "📊 Exportar para Excel"}
+    </Text>
+  </TouchableOpacity>
+</View>
 
       <View className="px-6 pt-6 gap-3 pb-8">
         {loading && <ActivityIndicator size="large" color="#0f172a" className="mt-6" />}
