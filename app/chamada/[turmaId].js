@@ -1,12 +1,9 @@
-import { useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { useEffect, useState } from "react";
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-
-const alunosMock = [
-  { id: "1", nome: "Ana Silva" },
-  { id: "2", nome: "Bruno Costa" },
-  { id: "3", nome: "Carla Mendes" },
-];
+import { collection, query, where, onSnapshot, addDoc } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
+import { useAuth } from "../../context/AuthContext";
 
 const ESTADOS = [
   { key: "presente", label: "Presente", cor: "bg-emerald-600" },
@@ -17,18 +14,58 @@ const ESTADOS = [
 export default function ChamadaScreen() {
   const router = useRouter();
   const { turmaId } = useLocalSearchParams();
+  const { user } = useAuth();
 
-  // Guarda o estado de cada aluno: { "1": "presente", "2": "falta", ... }
+  const [alunos, setAlunos] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [presencas, setPresencas] = useState({});
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    const q = query(collection(db, "alunos"), where("turma_id", "==", turmaId));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const lista = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setAlunos(lista);
+      setLoading(false);
+    });
+    return unsubscribe;
+  }, [turmaId]);
 
   const marcar = (alunoId, estado) => {
     setPresencas((prev) => ({ ...prev, [alunoId]: estado }));
   };
 
-  const guardarChamada = () => {
-    console.log("Presenças a guardar:", presencas);
-    // Mais à frente: aqui vamos gravar isto no Firebase
-    router.back();
+  const guardarChamada = async () => {
+    const alunosPorMarcar = alunos.filter((a) => !presencas[a.id]);
+    if (alunosPorMarcar.length > 0) {
+      Alert.alert("Atenção", "Marca o estado de todos os alunos antes de guardar.");
+      return;
+    }
+
+    setSalvando(true);
+    try {
+      const hoje = new Date();
+      const promessas = alunos.map((aluno) =>
+        addDoc(collection(db, "presencas"), {
+          aluno_id: aluno.id,
+          turma_id: turmaId,
+          data: hoje,
+          estado: presencas[aluno.id],
+          justificada: false,
+          observacoes: "",
+          registado_por: user?.uid || "",
+          criado_em: hoje,
+        })
+      );
+      await Promise.all(promessas);
+      Alert.alert("Sucesso", "Chamada guardada com sucesso!");
+      router.back();
+    } catch (error) {
+      console.log(error);
+      Alert.alert("Erro", "Não foi possível guardar a chamada.");
+    } finally {
+      setSalvando(false);
+    }
   };
 
   return (
@@ -38,11 +75,19 @@ export default function ChamadaScreen() {
           <Text className="text-gray-300">‹ Voltar</Text>
         </TouchableOpacity>
         <Text className="text-white text-2xl font-bold">Chamada</Text>
-        <Text className="text-gray-300 mt-1">Turma {turmaId} • Hoje</Text>
+        <Text className="text-gray-300 mt-1">Hoje</Text>
       </View>
 
+      {loading && <ActivityIndicator size="large" color="#0f172a" className="mt-6" />}
+
+      {!loading && alunos.length === 0 && (
+        <Text className="text-gray-400 text-center mt-6">
+          Não há alunos nesta turma.
+        </Text>
+      )}
+
       <View className="px-6 pt-6 gap-3">
-        {alunosMock.map((aluno) => (
+        {alunos.map((aluno) => (
           <View
             key={aluno.id}
             className="bg-white rounded-xl p-4 border border-gray-200"
@@ -78,16 +123,23 @@ export default function ChamadaScreen() {
         ))}
       </View>
 
-      <View className="px-6 py-6">
-        <TouchableOpacity
-          onPress={guardarChamada}
-          className="bg-slate-900 rounded-lg py-4"
-        >
-          <Text className="text-white text-center font-semibold text-base">
-            Guardar Chamada
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {alunos.length > 0 && (
+        <View className="px-6 py-6">
+          <TouchableOpacity
+            onPress={guardarChamada}
+            disabled={salvando}
+            className="bg-slate-900 rounded-lg py-4"
+          >
+            {salvando ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text className="text-white text-center font-semibold text-base">
+                Guardar Chamada
+              </Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
     </ScrollView>
   );
 }
