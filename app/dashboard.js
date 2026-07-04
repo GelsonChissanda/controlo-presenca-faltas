@@ -8,6 +8,19 @@ import { useAuth } from "../context/AuthContext";
 import AnimatedNumber from "../components/AnimatedNumber";
 import AreaChart from "../components/AreaChart";
 import DonutChart from "../components/DonutChart";
+import {
+  School,
+  GraduationCap,
+  ClipboardList,
+  AlertTriangle,
+  Bell,
+  CalendarDays,
+  Settings,
+  LogOut,
+  CheckCircle2,
+  ChevronRight,
+  PieChart,
+} from "lucide-react-native";
 
 const ROLE_LABEL = {
   admin: "Administrador",
@@ -38,7 +51,7 @@ function ultimosDiasUteis(quantidade) {
   return dias;
 }
 
-function agruparUltimos7Dias(presencas, estadoAlvo) {
+function agruparUltimosDiasUteis(presencas, estadoAlvo) {
   const dias = ultimosDiasUteis(5);
   return dias.map((dia) => {
     const proximo = new Date(dia);
@@ -53,10 +66,11 @@ function agruparUltimos7Dias(presencas, estadoAlvo) {
   });
 }
 
-// Cartão KPI escuro, tipo trading
-function KpiCard({ icone, label, valor, cor, sufixo = "", atraso = 0 }) {
+// Cartão KPI escuro, clicável, com pequena animação de entrada + de toque
+function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
   const opacidade = useRef(new Animated.Value(0)).current;
   const deslocamento = useRef(new Animated.Value(14)).current;
+  const escala = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
     Animated.parallel([
@@ -65,25 +79,46 @@ function KpiCard({ icone, label, valor, cor, sufixo = "", atraso = 0 }) {
     ]).start();
   }, []);
 
+  const aoPressionar = () => {
+    Animated.sequence([
+      Animated.timing(escala, { toValue: 0.96, duration: 90, useNativeDriver: true }),
+      Animated.timing(escala, { toValue: 1, duration: 90, useNativeDriver: true }),
+    ]).start();
+    onPress && onPress();
+  };
+
   return (
-    <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }], flex: 1 }}>
-      <View
-        className="rounded-2xl p-4"
-        style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
-      >
-        <Text className="text-lg mb-1">{icone}</Text>
-        <View className="flex-row items-baseline">
+    <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }, { scale: escala }], flex: 1 }}>
+      <TouchableOpacity activeOpacity={0.85} onPress={aoPressionar} disabled={!onPress}>
+        <View
+          className="rounded-2xl p-4"
+          style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+        >
+          <View className="flex-row items-center justify-between mb-2">
+            <View
+              style={{
+                backgroundColor: `${cor}22`,
+                borderRadius: 10,
+                width: 32,
+                height: 32,
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Icon size={17} color={cor} strokeWidth={2.2} />
+            </View>
+            {onPress && <ChevronRight size={16} color="#374151" />}
+          </View>
           <AnimatedNumber value={valor} style={{ color: "#F8FAFC", fontSize: 26, fontWeight: "800" }} />
-          {sufixo ? <Text style={{ color: cor, fontSize: 14, fontWeight: "700", marginLeft: 2 }}>{sufixo}</Text> : null}
+          <Text className="text-gray-500 text-xs mt-1">{label}</Text>
+          <View style={{ height: 3, borderRadius: 3, backgroundColor: cor, marginTop: 8, opacity: 0.7 }} />
         </View>
-        <Text className="text-gray-500 text-xs mt-1">{label}</Text>
-        <View style={{ height: 3, borderRadius: 3, backgroundColor: cor, marginTop: 8, opacity: 0.7 }} />
-      </View>
+      </TouchableOpacity>
     </Animated.View>
   );
 }
 
-function AcessoRapidoItem({ label, icone, destaque, onPress }) {
+function AcessoRapidoItem({ label, Icon, destaque, onPress }) {
   const escala = useRef(new Animated.Value(1)).current;
   const aoPressionar = () => {
     Animated.sequence([
@@ -105,10 +140,13 @@ function AcessoRapidoItem({ label, icone, destaque, onPress }) {
           borderColor: "#1F2937",
         }}
       >
-        <Text style={{ color: destaque ? "#0B1120" : "#E2E8F0", fontWeight: "600", fontSize: 15 }}>
-          {icone}  {label}
-        </Text>
-        <Text style={{ color: destaque ? "#0B1120" : "#64748B" }}>›</Text>
+        <View className="flex-row items-center" style={{ gap: 10 }}>
+          <Icon size={18} color={destaque ? "#0B1120" : "#94A3B8"} strokeWidth={2.2} />
+          <Text style={{ color: destaque ? "#0B1120" : "#E2E8F0", fontWeight: "600", fontSize: 15 }}>
+            {label}
+          </Text>
+        </View>
+        <ChevronRight size={18} color={destaque ? "#0B1120" : "#4B5563"} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -131,7 +169,6 @@ export default function DashboardScreen() {
     if (!loading && !user) router.replace("/");
   }, [loading, user]);
 
-  // Estatísticas gerais (admin / professor)
   useEffect(() => {
     if (!user || userData?.role === "encarregado") return;
 
@@ -141,7 +178,7 @@ export default function DashboardScreen() {
     const qSemana = query(collection(db, "presencas"), where("data", ">=", seteDiasAtras()));
     const unsubSemana = onSnapshot(qSemana, (snap) => {
       const presencas = snap.docs.map((d) => d.data());
-      setGraficoFaltas(agruparUltimos7Dias(presencas, "falta"));
+      setGraficoFaltas(agruparUltimosDiasUteis(presencas, "falta"));
 
       const hoje = new Date();
       hoje.setHours(0, 0, 0, 0);
@@ -170,7 +207,6 @@ export default function DashboardScreen() {
     };
   }, [user, userData]);
 
-  // Estatísticas do encarregado
   useEffect(() => {
     if (!user || userData?.role !== "encarregado") return;
 
@@ -180,7 +216,7 @@ export default function DashboardScreen() {
       setMeusEducandos(educandos.length);
 
       if (educandos.length === 0) {
-        setGraficoFaltas(agruparUltimos7Dias([], "falta"));
+        setGraficoFaltas(agruparUltimosDiasUteis([], "falta"));
         return;
       }
 
@@ -192,7 +228,7 @@ export default function DashboardScreen() {
       );
       const presSnap = await getDocs(qPresencas);
       const presencas = presSnap.docs.map((d) => d.data());
-      setGraficoFaltas(agruparUltimos7Dias(presencas, "falta"));
+      setGraficoFaltas(agruparUltimosDiasUteis(presencas, "falta"));
 
       const totalPresente = presencas.filter((p) => p.estado === "presente").length;
       const totalGeral = presencas.length || 1;
@@ -241,7 +277,8 @@ export default function DashboardScreen() {
               <Text className="text-gray-500 text-sm">{ROLE_LABEL[role] || "Utilizador"}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={terminarSessao}>
+          <TouchableOpacity onPress={terminarSessao} className="flex-row items-center" style={{ gap: 4 }}>
+            <LogOut size={15} color="#64748B" />
             <Text className="text-gray-500 text-sm">Sair</Text>
           </TouchableOpacity>
         </View>
@@ -251,58 +288,88 @@ export default function DashboardScreen() {
       <View className="px-6">
         {role === "encarregado" ? (
           <View className="flex-row gap-3 mb-3">
-            <KpiCard icone="🎓" label="Meus educandos" valor={meusEducandos} cor="#22D3EE" atraso={0} />
-            <KpiCard icone="🔔" label="Notificações novas" valor={notificacoesNaoLidas} cor="#A78BFA" atraso={100} />
+            <KpiCard
+              Icon={GraduationCap}
+              label="Meus educandos"
+              valor={meusEducandos}
+              cor="#22D3EE"
+              atraso={0}
+              onPress={() => router.push("/turmas")}
+            />
+            <KpiCard
+              Icon={Bell}
+              label="Notificações novas"
+              valor={notificacoesNaoLidas}
+              cor="#A78BFA"
+              atraso={100}
+              onPress={() => router.push("/notificacoes")}
+            />
           </View>
         ) : (
           <>
             <View className="flex-row gap-3 mb-3">
-              <KpiCard icone="🏫" label="Turmas" valor={totalTurmas} cor="#22D3EE" atraso={0} />
-              <KpiCard icone="🧑‍🎓" label="Alunos" valor={totalAlunos} cor="#818CF8" atraso={80} />
+              <KpiCard Icon={School} label="Turmas" valor={totalTurmas} cor="#22D3EE" atraso={0} onPress={() => router.push("/turmas")} />
+              <KpiCard Icon={GraduationCap} label="Alunos" valor={totalAlunos} cor="#818CF8" atraso={80} onPress={() => router.push("/turmas")} />
             </View>
             <View className="flex-row gap-3 mb-3">
-              <KpiCard icone="📋" label="Faltas hoje" valor={faltasHoje} cor="#F87171" atraso={160} />
-              <KpiCard icone="⚠️" label="Chamadas (mês)" valor={chamadasMes} cor="#FBBF24" atraso={240} />
+              <KpiCard Icon={ClipboardList} label="Faltas hoje" valor={faltasHoje} cor="#F87171" atraso={160} onPress={() => router.push("/registar-presenca")} />
+              <KpiCard Icon={AlertTriangle} label="Chamadas (mês)" valor={chamadasMes} cor="#FBBF24" atraso={240} onPress={() => router.push("/chamadas-atencao")} />
             </View>
           </>
         )}
       </View>
 
-      {/* Gráfico de área — Faltas nos últimos 7 dias */}
+      {/* Gráfico de área — clicável */}
       <View className="px-6 mb-3">
-        <View
-          className="rounded-2xl p-4"
-          style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => router.push(role === "encarregado" ? "/turmas" : "/chamadas-atencao")}
         >
-          <View className="flex-row justify-between items-center mb-3">
-            <Text style={{ color: "#F8FAFC" }} className="font-semibold">
-              {role === "encarregado" ? "Faltas dos educandos" : "Faltas nos últimos 7 dias"}
-            </Text>
-            <View style={{ backgroundColor: "#1F2937", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-              <Text className="text-gray-400 text-xs">7 dias</Text>
-            </View>
-          </View>
-          <AreaChart data={graficoFaltas} color="#F87171" height={150} />
-        </View>
-      </View>
-
-      {/* Donut de assiduidade */}
-      {role !== "encarregado" && (
-        <View className="px-6 mb-3">
           <View
-            className="rounded-2xl p-5 flex-row items-center justify-between"
+            className="rounded-2xl p-4"
             style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
           >
-            <View className="flex-1 pr-4">
-              <Text style={{ color: "#F8FAFC" }} className="font-semibold mb-1">
-                Assiduidade geral
-              </Text>
-              <Text className="text-gray-500 text-xs">
-                Percentagem de presenças confirmadas nos últimos 7 dias, considerando todas as turmas.
-              </Text>
+            <View className="flex-row justify-between items-center mb-3">
+              <View className="flex-row items-center" style={{ gap: 8 }}>
+                <ClipboardList size={16} color="#F87171" />
+                <Text style={{ color: "#F8FAFC" }} className="font-semibold">
+                  {role === "encarregado" ? "Faltas dos educandos" : "Faltas nos últimos dias"}
+                </Text>
+              </View>
+              <View className="flex-row items-center" style={{ gap: 4 }}>
+                <View style={{ backgroundColor: "#1F2937", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                  <Text className="text-gray-400 text-xs">5 dias úteis</Text>
+                </View>
+                <ChevronRight size={16} color="#4B5563" />
+              </View>
             </View>
-            <DonutChart percentagem={assiduidade} cor="#34D399" legenda="Presença" />
+            <AreaChart data={graficoFaltas} color="#F87171" height={150} />
           </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Donut de assiduidade — clicável */}
+      {role !== "encarregado" && (
+        <View className="px-6 mb-3">
+          <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/turmas")}>
+            <View
+              className="rounded-2xl p-5 flex-row items-center justify-between"
+              style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+            >
+              <View className="flex-1 pr-4">
+                <View className="flex-row items-center mb-1" style={{ gap: 8 }}>
+                  <PieChart size={16} color="#34D399" />
+                  <Text style={{ color: "#F8FAFC" }} className="font-semibold">
+                    Assiduidade geral
+                  </Text>
+                </View>
+                <Text className="text-gray-500 text-xs">
+                  Percentagem de presenças confirmadas nos últimos dias úteis, em todas as turmas. Toca para ver o detalhe.
+                </Text>
+              </View>
+              <DonutChart percentagem={assiduidade} cor="#34D399" legenda="Presença" />
+            </View>
+          </TouchableOpacity>
         </View>
       )}
 
@@ -314,20 +381,20 @@ export default function DashboardScreen() {
 
         <View className="gap-3 pb-10">
           {role === "admin" && (
-            <AcessoRapidoItem icone="⚙️" label="Painel de Administração" destaque onPress={() => router.push("/admin")} />
+            <AcessoRapidoItem Icon={Settings} label="Painel de Administração" destaque onPress={() => router.push("/admin")} />
           )}
 
-          <AcessoRapidoItem icone="🔔" label="Notificações" onPress={() => router.push("/notificacoes")} />
-          <AcessoRapidoItem icone="🏫" label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
+          <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
+          <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
 
           {role !== "encarregado" && (
             <>
-              <AcessoRapidoItem icone="✅" label="Registar Presença" onPress={() => router.push("/registar-presenca")} />
-              <AcessoRapidoItem icone="⚠️" label="Chamadas de Atenção" onPress={() => router.push("/chamadas-atencao")} />
+              <AcessoRapidoItem Icon={CheckCircle2} label="Registar Presença" onPress={() => router.push("/registar-presenca")} />
+              <AcessoRapidoItem Icon={AlertTriangle} label="Chamadas de Atenção" onPress={() => router.push("/chamadas-atencao")} />
             </>
           )}
 
-          <AcessoRapidoItem icone="📅" label="Reuniões" onPress={() => router.push("/reunioes")} />
+          <AcessoRapidoItem Icon={CalendarDays} label="Reuniões" onPress={() => router.push("/reunioes")} />
         </View>
       </View>
     </ScrollView>
