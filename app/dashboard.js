@@ -384,7 +384,9 @@ export default function DashboardScreen() {
             <AcessoRapidoItem Icon={Settings} label="Painel de Administração" destaque onPress={() => router.push("/admin")} />
           )}
 
-          <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
+          {role !== "admin" && (
+  <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
+)}
           <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
 
           {role !== "encarregado" && (
