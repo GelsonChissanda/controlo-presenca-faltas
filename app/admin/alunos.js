@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Modal, ActivityIndicator, Alert } from "react-native";
 import { useRouter } from "expo-router";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 export default function AdminAlunosScreen() {
@@ -31,23 +31,42 @@ export default function AdminAlunosScreen() {
     };
   }, []);
 
+  const [encarregados, setEncarregados] = useState([]);
+const [encarregadosSelecionados, setEncarregadosSelecionados] = useState([]);
+
+useEffect(() => {
+  const q = query(collection(db, "users"), where("role", "==", "encarregado"));
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    setEncarregados(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+  });
+  return unsubscribe;
+}, []);
+
   const nomeTurma = (id) => turmas.find((t) => t.id === id)?.nome || "Sem turma";
 
   const abrirNovo = () => {
-    setEditandoId(null);
-    setNome("");
-    setNumeroProcesso("");
-    setTurmaId(turmas[0]?.id || "");
-    setModalVisivel(true);
-  };
+  setEditandoId(null);
+  setNome("");
+  setNumeroProcesso("");
+  setTurmaId(turmas[0]?.id || "");
+  setEncarregadosSelecionados([]);
+  setModalVisivel(true);
+};
 
   const abrirEditar = (aluno) => {
-    setEditandoId(aluno.id);
-    setNome(aluno.nome || "");
-    setNumeroProcesso(aluno.numero_processo || "");
-    setTurmaId(aluno.turma_id || "");
-    setModalVisivel(true);
-  };
+  setEditandoId(aluno.id);
+  setNome(aluno.nome || "");
+  setNumeroProcesso(aluno.numero_processo || "");
+  setTurmaId(aluno.turma_id || "");
+  setEncarregadosSelecionados(aluno.encarregados_ids || []);
+  setModalVisivel(true);
+};
+
+const alternarEncarregado = (uid) => {
+  setEncarregadosSelecionados((prev) =>
+    prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
+  );
+};
 
   const guardar = async () => {
     if (!nome || !numeroProcesso || !turmaId) {
@@ -57,23 +76,24 @@ export default function AdminAlunosScreen() {
     setSalvando(true);
     try {
       if (editandoId) {
-        await updateDoc(doc(db, "alunos", editandoId), {
-          nome,
-          numero_processo: numeroProcesso,
-          turma_id: turmaId,
-        });
-      } else {
-        await addDoc(collection(db, "alunos"), {
-          nome,
-          numero_processo: numeroProcesso,
-          turma_id: turmaId,
-          data_nascimento: null,
-          foto: "",
-          encarregados_ids: [],
-          estado: "ativo",
-          criado_em: new Date(),
-        });
-      }
+  await updateDoc(doc(db, "alunos", editandoId), {
+    nome,
+    numero_processo: numeroProcesso,
+    turma_id: turmaId,
+    encarregados_ids: encarregadosSelecionados,
+  });
+} else {
+  await addDoc(collection(db, "alunos"), {
+    nome,
+    numero_processo: numeroProcesso,
+    turma_id: turmaId,
+    data_nascimento: null,
+    foto: "",
+    encarregados_ids: encarregadosSelecionados,
+    estado: "ativo",
+    criado_em: new Date(),
+  });
+}
       setModalVisivel(false);
     } catch (error) {
       console.log(error);
@@ -198,6 +218,31 @@ export default function AdminAlunosScreen() {
                 );
               })}
             </View>
+
+            <Text className="text-sm text-gray-600 mb-2">Encarregado(s) de Educação</Text>
+<View className="flex-row flex-wrap gap-2 mb-6">
+  {encarregados.map((enc) => {
+    const ativo = encarregadosSelecionados.includes(enc.id);
+    return (
+      <TouchableOpacity
+        key={enc.id}
+        onPress={() => alternarEncarregado(enc.id)}
+        className={`px-4 py-2 rounded-full border ${
+          ativo ? "bg-slate-900 border-slate-900" : "bg-white border-gray-300"
+        }`}
+      >
+        <Text className={ativo ? "text-white text-sm font-medium" : "text-gray-600 text-sm"}>
+          {enc.nome || enc.email}
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
+{encarregados.length === 0 && (
+  <Text className="text-amber-600 text-xs mb-4">
+    Ainda não há contas de encarregado registadas.
+  </Text>
+)}
 
             <TouchableOpacity
               onPress={guardar}
