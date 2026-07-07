@@ -8,6 +8,8 @@ export default function AreaChart({ data, height = 150, color = "#22D3EE" }) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   const [progress, setProgress] = useState(0);
 
+  const dadosValidos = Array.isArray(data) && data.length > 0 ? data : [];
+
   useEffect(() => {
     const id = progressAnim.addListener(({ value }) => setProgress(value));
     progressAnim.setValue(0);
@@ -26,16 +28,27 @@ export default function AreaChart({ data, height = 150, color = "#22D3EE" }) {
     return <View style={{ height }} onLayout={(e) => setWidth(e.nativeEvent.layout.width)} />;
   }
 
-  const max = Math.max(...data.map((d) => d.value), 1);
-  const stepX = (width - padding * 2) / Math.max(data.length - 1, 1);
+  // Sem dados suficientes: mostra um estado vazio em vez de tentar desenhar o gráfico
+  if (dadosValidos.length < 2) {
+    return (
+      <View onLayout={(e) => setWidth(e.nativeEvent.layout.width)} style={{ height, justifyContent: "center", alignItems: "center" }}>
+        <Text style={{ color: "#475569", fontSize: 13 }}>Ainda não há dados suficientes para mostrar o gráfico.</Text>
+      </View>
+    );
+  }
+
+  const max = Math.max(...dadosValidos.map((d) => d.value), 1);
+  const stepX = (width - padding * 2) / Math.max(dadosValidos.length - 1, 1);
   const baseY = height - padding - 14;
 
-  const pontos = data.map((d, i) => {
+  const pontos = dadosValidos.map((d, i) => {
     const x = padding + i * stepX;
     const alvoY = padding + (1 - d.value / max) * (baseY - padding);
     const y = baseY + (alvoY - baseY) * progress;
     return { x, y };
   });
+
+  if (pontos.length === 0) return null;
 
   const linhaPath = pontos.map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
   const areaPath = `${linhaPath} L ${pontos[pontos.length - 1].x.toFixed(2)} ${baseY} L ${pontos[0].x.toFixed(2)} ${baseY} Z`;
@@ -50,7 +63,6 @@ export default function AreaChart({ data, height = 150, color = "#22D3EE" }) {
           </LinearGradient>
         </Defs>
 
-        {/* linhas guia horizontais */}
         {[0.25, 0.5, 0.75].map((f, i) => (
           <Line
             key={i}
@@ -72,8 +84,8 @@ export default function AreaChart({ data, height = 150, color = "#22D3EE" }) {
       </Svg>
 
       <View className="flex-row justify-between mt-1">
-        {data.map((d, i) => (
-          <Text key={i} className="text-[10px] text-gray-500" style={{ width: `${100 / data.length}%`, textAlign: "center" }}>
+        {dadosValidos.map((d, i) => (
+          <Text key={i} className="text-[10px] text-gray-500" style={{ width: `${100 / dadosValidos.length}%`, textAlign: "center" }}>
             {d.label}
           </Text>
         ))}
