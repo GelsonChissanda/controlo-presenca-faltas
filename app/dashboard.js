@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Animated } from "react-native";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
-import { collection, query, where, onSnapshot, getDocs } from "firebase/firestore";
+import { collection, query, where, onSnapshot, getDocs, orderBy, limit } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useAuth } from "../context/AuthContext";
 import AnimatedNumber from "../components/AnimatedNumber";
@@ -29,7 +29,6 @@ const ROLE_LABEL = {
 };
 
 function seteDiasAtras() {
-  // Volta 9 dias corridos para garantir que cobre 5 dias úteis mesmo com fins de semana pelo meio
   const d = new Date();
   d.setDate(d.getDate() - 9);
   d.setHours(0, 0, 0, 0);
@@ -40,12 +39,9 @@ function ultimosDiasUteis(quantidade) {
   const dias = [];
   const cursor = new Date();
   cursor.setHours(0, 0, 0, 0);
-
   while (dias.length < quantidade) {
-    const diaSemana = cursor.getDay(); // 0 = domingo, 6 = sábado
-    if (diaSemana !== 0 && diaSemana !== 6) {
-      dias.unshift(new Date(cursor));
-    }
+    const diaSemana = cursor.getDay();
+    if (diaSemana !== 0 && diaSemana !== 6) dias.unshift(new Date(cursor));
     cursor.setDate(cursor.getDate() - 1);
   }
   return dias;
@@ -64,6 +60,19 @@ function agruparUltimosDiasUteis(presencas, estadoAlvo) {
     }).length;
     return { label, value: total };
   });
+}
+
+function iniciaisDoNome(nome) {
+  if (!nome) return "?";
+  const partes = nome.trim().split(" ").filter(Boolean);
+  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
+  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
+}
+
+function corAssiduidade(percentagem) {
+  if (percentagem >= 85) return "#34D399";
+  if (percentagem >= 60) return "#FBBF24";
+  return "#F87171";
 }
 
 // Cartão KPI escuro, clicável, com pequena animação de entrada + de toque
@@ -90,21 +99,9 @@ function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
   return (
     <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }, { scale: escala }], flex: 1 }}>
       <TouchableOpacity activeOpacity={0.85} onPress={aoPressionar} disabled={!onPress}>
-        <View
-          className="rounded-2xl p-4"
-          style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
-        >
+        <View className="rounded-2xl p-4" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
           <View className="flex-row items-center justify-between mb-2">
-            <View
-              style={{
-                backgroundColor: `${cor}22`,
-                borderRadius: 10,
-                width: 32,
-                height: 32,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
+            <View style={{ backgroundColor: `${cor}22`, borderRadius: 10, width: 32, height: 32, alignItems: "center", justifyContent: "center" }}>
               <Icon size={17} color={cor} strokeWidth={2.2} />
             </View>
             {onPress && <ChevronRight size={16} color="#374151" />}
@@ -112,6 +109,99 @@ function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
           <AnimatedNumber value={valor} style={{ color: "#F8FAFC", fontSize: 26, fontWeight: "800" }} />
           <Text className="text-gray-500 text-xs mt-1">{label}</Text>
           <View style={{ height: 3, borderRadius: 3, backgroundColor: cor, marginTop: 8, opacity: 0.7 }} />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// Cartão focado num educando específico (para o perfil Encarregado)
+function CartaoEducando({ educando, atraso = 0, onPress }) {
+  const opacidade = useRef(new Animated.Value(0)).current;
+  const deslocamento = useRef(new Animated.Value(14)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacidade, { toValue: 1, duration: 500, delay: atraso, useNativeDriver: true }),
+      Animated.timing(deslocamento, { toValue: 0, duration: 500, delay: atraso, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  const cor = corAssiduidade(educando.assiduidade);
+
+  return (
+    <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }] }}>
+      <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
+        <View className="rounded-2xl p-5 mb-3" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-row items-center flex-1" style={{ gap: 12 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "#1E293B",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  borderWidth: 1.5,
+                  borderColor: cor,
+                }}
+              >
+                <Text style={{ color: cor, fontWeight: "800", fontSize: 14 }}>
+                  {iniciaisDoNome(educando.nome)}
+                </Text>
+              </View>
+              <View className="flex-1">
+                <Text style={{ color: "#F8FAFC" }} className="font-bold text-base" numberOfLines={1}>
+                  {educando.nome}
+                </Text>
+                <Text className="text-gray-500 text-xs mt-0.5">{educando.turmaNome}</Text>
+              </View>
+            </View>
+            <DonutChart percentagem={educando.assiduidade} tamanho={62} espessura={7} cor={cor} legenda={null} />
+          </View>
+
+          <AreaChart data={educando.grafico} color="#F87171" height={90} />
+
+          <View className="flex-row items-center justify-between mt-3 mb-3">
+            <Text className="text-gray-500 text-xs">
+              Assiduidade nos últimos dias úteis
+            </Text>
+            <View
+              style={{
+                backgroundColor: "#1F2937",
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+              }}
+            >
+              <Text style={{ color: educando.faltasMes > 0 ? "#F87171" : "#94A3B8", fontSize: 11, fontWeight: "600" }}>
+                {educando.faltasMes} {educando.faltasMes === 1 ? "falta" : "faltas"} este mês
+              </Text>
+            </View>
+          </View>
+
+          {educando.ultimaChamada && (
+            <View
+              className="rounded-xl p-3 mb-3"
+              style={{ backgroundColor: "#1E1B2E", borderWidth: 1, borderColor: "#3730A3" }}
+            >
+              <View className="flex-row items-center justify-between mb-1">
+                <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: "700" }}>
+                  Última chamada de atenção
+                </Text>
+                <Text className="text-gray-500" style={{ fontSize: 11 }}>{educando.ultimaChamada.data}</Text>
+              </View>
+              <Text style={{ color: "#E2E8F0", fontSize: 12 }} numberOfLines={1}>
+                {educando.ultimaChamada.motivo}
+              </Text>
+            </View>
+          )}
+
+          <View className="flex-row items-center justify-end">
+            <Text style={{ color: "#22D3EE", fontSize: 12, fontWeight: "600" }}>Ver histórico completo</Text>
+            <ChevronRight size={14} color="#22D3EE" />
+          </View>
         </View>
       </TouchableOpacity>
     </Animated.View>
@@ -134,17 +224,11 @@ function AcessoRapidoItem({ label, Icon, destaque, onPress }) {
         onPress={aoPressionar}
         activeOpacity={0.85}
         className="rounded-xl p-4 flex-row justify-between items-center"
-        style={{
-          backgroundColor: destaque ? "#22D3EE" : "#111827",
-          borderWidth: destaque ? 0 : 1,
-          borderColor: "#1F2937",
-        }}
+        style={{ backgroundColor: destaque ? "#22D3EE" : "#111827", borderWidth: destaque ? 0 : 1, borderColor: "#1F2937" }}
       >
         <View className="flex-row items-center" style={{ gap: 10 }}>
           <Icon size={18} color={destaque ? "#0B1120" : "#94A3B8"} strokeWidth={2.2} />
-          <Text style={{ color: destaque ? "#0B1120" : "#E2E8F0", fontWeight: "600", fontSize: 15 }}>
-            {label}
-          </Text>
+          <Text style={{ color: destaque ? "#0B1120" : "#E2E8F0", fontWeight: "600", fontSize: 15 }}>{label}</Text>
         </View>
         <ChevronRight size={18} color={destaque ? "#0B1120" : "#4B5563"} />
       </TouchableOpacity>
@@ -161,14 +245,16 @@ export default function DashboardScreen() {
   const [faltasHoje, setFaltasHoje] = useState(0);
   const [chamadasMes, setChamadasMes] = useState(0);
   const [notificacoesNaoLidas, setNotificacoesNaoLidas] = useState(0);
-  const [meusEducandos, setMeusEducandos] = useState(0);
   const [assiduidade, setAssiduidade] = useState(0);
   const [graficoFaltas, setGraficoFaltas] = useState([]);
+  const [educandosDetalhados, setEducandosDetalhados] = useState([]);
+  const [carregandoEducandos, setCarregandoEducandos] = useState(true);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
   }, [loading, user]);
 
+  // Estatísticas gerais (admin / professor)
   useEffect(() => {
     if (!user || userData?.role === "encarregado") return;
 
@@ -207,35 +293,105 @@ export default function DashboardScreen() {
     };
   }, [user, userData]);
 
+  // Dados focados nos educandos (perfil Encarregado)
   useEffect(() => {
     if (!user || userData?.role !== "encarregado") return;
 
     const qEducandos = query(collection(db, "alunos"), where("encarregados_ids", "array-contains", user.uid));
-    const unsubEducandos = onSnapshot(qEducandos, async (snap) => {
-      const educandos = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      setMeusEducandos(educandos.length);
+    const unsubscribe = onSnapshot(qEducandos, async (snap) => {
+      const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 
-      if (educandos.length === 0) {
-        setGraficoFaltas(agruparUltimosDiasUteis([], "falta"));
+      if (lista.length === 0) {
+        setEducandosDetalhados([]);
+        setCarregandoEducandos(false);
         return;
       }
 
-      const idsEducandos = educandos.map((e) => e.id);
-      const qPresencas = query(
-        collection(db, "presencas"),
-        where("aluno_id", "in", idsEducandos.slice(0, 10)),
-        where("data", ">=", seteDiasAtras())
-      );
-      const presSnap = await getDocs(qPresencas);
-      const presencas = presSnap.docs.map((d) => d.data());
-      setGraficoFaltas(agruparUltimosDiasUteis(presencas, "falta"));
+      let turmasMap = {};
+      try {
+        const turmasSnap = await getDocs(collection(db, "turmas"));
+        turmasSnap.docs.forEach((t) => (turmasMap[t.id] = t.data().nome));
+      } catch (erro) {
+        console.log("Erro ao carregar turmas:", erro.message);
+      }
 
-      const totalPresente = presencas.filter((p) => p.estado === "presente").length;
-      const totalGeral = presencas.length || 1;
-      setAssiduidade(Math.round((totalPresente / totalGeral) * 100));
+      const inicioMes = new Date();
+      inicioMes.setDate(1);
+      inicioMes.setHours(0, 0, 0, 0);
+
+      const detalhados = await Promise.all(
+        lista.map(async (educando) => {
+          try {
+            const qPresencas = query(
+              collection(db, "presencas"),
+              where("aluno_id", "==", educando.id),
+              where("data", ">=", seteDiasAtras())
+            );
+            const presSnap = await getDocs(qPresencas);
+            const presencas = presSnap.docs.map((d) => d.data());
+            const grafico = agruparUltimosDiasUteis(presencas, "falta");
+            const totalPresente = presencas.filter((p) => p.estado === "presente").length;
+            const totalGeral = presencas.length || 1;
+            const assid = Math.round((totalPresente / totalGeral) * 100);
+
+            const qFaltasMes = query(
+              collection(db, "presencas"),
+              where("aluno_id", "==", educando.id),
+              where("data", ">=", inicioMes)
+            );
+            const faltasMesSnap = await getDocs(qFaltasMes);
+            const faltasMes = faltasMesSnap.docs.filter((d) => d.data().estado === "falta").length;
+
+            let ultimaChamada = null;
+            try {
+              const qChamada = query(
+                collection(db, "chamadas_atencao"),
+                where("aluno_id", "==", educando.id),
+                orderBy("data", "desc"),
+                limit(1)
+              );
+              const chamadaSnap = await getDocs(qChamada);
+              if (!chamadaSnap.empty) {
+                const c = chamadaSnap.docs[0].data();
+                ultimaChamada = {
+                  motivo: c.motivo,
+                  gravidade: c.gravidade,
+                  data: c.data?.toDate ? c.data.toDate().toLocaleDateString("pt-PT", { day: "2-digit", month: "short" }) : "",
+                };
+              }
+            } catch (e) {
+              console.log("Aviso: não foi possível carregar a última chamada de atenção:", e.message);
+            }
+
+            return {
+              id: educando.id,
+              nome: educando.nome,
+              turmaNome: turmasMap[educando.turma_id] || "Sem turma",
+              assiduidade: assid,
+              grafico,
+              faltasMes,
+              ultimaChamada,
+            };
+          } catch (erro) {
+            console.log("Erro ao carregar dados do educando", educando.id, ":", erro.message);
+            return {
+              id: educando.id,
+              nome: educando.nome,
+              turmaNome: turmasMap[educando.turma_id] || "Sem turma",
+              assiduidade: 0,
+              grafico: agruparUltimosDiasUteis([], "falta"),
+              faltasMes: 0,
+              ultimaChamada: null,
+            };
+          }
+        })
+      );
+
+      setEducandosDetalhados(detalhados);
+      setCarregandoEducandos(false);
     });
 
-    return unsubEducandos;
+    return unsubscribe;
   }, [user, userData]);
 
   useEffect(() => {
@@ -284,29 +440,65 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* KPIs */}
-      <View className="px-6">
-        {role === "encarregado" ? (
-          <View className="flex-row gap-3 mb-3">
-            <KpiCard
-              Icon={GraduationCap}
-              label="Meus educandos"
-              valor={meusEducandos}
-              cor="#22D3EE"
-              atraso={0}
-              onPress={() => router.push("/turmas")}
-            />
-            <KpiCard
-              Icon={Bell}
-              label="Notificações novas"
-              valor={notificacoesNaoLidas}
-              cor="#A78BFA"
-              atraso={100}
-              onPress={() => router.push("/notificacoes")}
-            />
+      {role === "encarregado" ? (
+        <>
+          {/* Notificações — pequeno destaque no topo */}
+          <View className="px-6 mb-4">
+            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/notificacoes")}>
+              <View
+                className="rounded-2xl p-4 flex-row items-center justify-between"
+                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+              >
+                <View className="flex-row items-center" style={{ gap: 10 }}>
+                  <View style={{ backgroundColor: "#A78BFA22", borderRadius: 10, width: 34, height: 34, alignItems: "center", justifyContent: "center" }}>
+                    <Bell size={17} color="#A78BFA" strokeWidth={2.2} />
+                  </View>
+                  <View>
+                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Notificações</Text>
+                    <Text className="text-gray-500 text-xs">
+                      {notificacoesNaoLidas > 0 ? `${notificacoesNaoLidas} por ler` : "Tudo em dia"}
+                    </Text>
+                  </View>
+                </View>
+                <ChevronRight size={18} color="#4B5563" />
+              </View>
+            </TouchableOpacity>
           </View>
-        ) : (
-          <>
+
+          {/* Cartões focados em cada educando */}
+          <View className="px-6">
+            <Text style={{ color: "#F8FAFC" }} className="font-semibold mb-4">
+              Meu{educandosDetalhados.length > 1 ? "s" : ""} educando{educandosDetalhados.length > 1 ? "s" : ""}
+            </Text>
+
+            {carregandoEducandos && <ActivityIndicator size="large" color="#22D3EE" className="mb-4" />}
+
+            {!carregandoEducandos && educandosDetalhados.length === 0 && (
+              <View
+                className="rounded-2xl p-6 mb-4 items-center"
+                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+              >
+                <GraduationCap size={28} color="#374151" />
+                <Text className="text-gray-400 text-sm text-center mt-3">
+                  Ainda não há nenhum educando associado à tua conta.{"\n"}Fala com a administração da escola para ligarem o teu perfil ao aluno certo.
+                </Text>
+              </View>
+            )}
+
+            {educandosDetalhados.map((educando, i) => (
+              <CartaoEducando
+                key={educando.id}
+                educando={educando}
+                atraso={i * 100}
+                onPress={() => router.push(`/aluno/${educando.id}`)}
+              />
+            ))}
+          </View>
+        </>
+      ) : (
+        <>
+          {/* KPIs — Admin / Professor */}
+          <View className="px-6">
             <View className="flex-row gap-3 mb-3">
               <KpiCard Icon={School} label="Turmas" valor={totalTurmas} cor="#22D3EE" atraso={0} onPress={() => router.push("/turmas")} />
               <KpiCard Icon={GraduationCap} label="Alunos" valor={totalAlunos} cor="#818CF8" atraso={80} onPress={() => router.push("/turmas")} />
@@ -315,62 +507,50 @@ export default function DashboardScreen() {
               <KpiCard Icon={ClipboardList} label="Faltas hoje" valor={faltasHoje} cor="#F87171" atraso={160} onPress={() => router.push("/registar-presenca")} />
               <KpiCard Icon={AlertTriangle} label="Chamadas (mês)" valor={chamadasMes} cor="#FBBF24" atraso={240} onPress={() => router.push("/chamadas-atencao")} />
             </View>
-          </>
-        )}
-      </View>
-
-      {/* Gráfico de área — clicável */}
-      <View className="px-6 mb-3">
-        <TouchableOpacity
-          activeOpacity={0.85}
-          onPress={() => router.push(role === "encarregado" ? "/turmas" : "/chamadas-atencao")}
-        >
-          <View
-            className="rounded-2xl p-4"
-            style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
-          >
-            <View className="flex-row justify-between items-center mb-3">
-              <View className="flex-row items-center" style={{ gap: 8 }}>
-                <ClipboardList size={16} color="#F87171" />
-                <Text style={{ color: "#F8FAFC" }} className="font-semibold">
-                  {role === "encarregado" ? "Faltas dos educandos" : "Faltas nos últimos dias"}
-                </Text>
-              </View>
-              <View className="flex-row items-center" style={{ gap: 4 }}>
-                <View style={{ backgroundColor: "#1F2937", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                  <Text className="text-gray-400 text-xs">5 dias úteis</Text>
-                </View>
-                <ChevronRight size={16} color="#4B5563" />
-              </View>
-            </View>
-            <AreaChart data={graficoFaltas} color="#F87171" height={150} />
           </View>
-        </TouchableOpacity>
-      </View>
 
-      {/* Donut de assiduidade — clicável */}
-      {role !== "encarregado" && (
-        <View className="px-6 mb-3">
-          <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/turmas")}>
-            <View
-              className="rounded-2xl p-5 flex-row items-center justify-between"
-              style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
-            >
-              <View className="flex-1 pr-4">
-                <View className="flex-row items-center mb-1" style={{ gap: 8 }}>
-                  <PieChart size={16} color="#34D399" />
-                  <Text style={{ color: "#F8FAFC" }} className="font-semibold">
-                    Assiduidade geral
+          {/* Gráfico de área */}
+          <View className="px-6 mb-3">
+            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/chamadas-atencao")}>
+              <View className="rounded-2xl p-4" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
+                <View className="flex-row justify-between items-center mb-3">
+                  <View className="flex-row items-center" style={{ gap: 8 }}>
+                    <ClipboardList size={16} color="#F87171" />
+                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Faltas nos últimos dias</Text>
+                  </View>
+                  <View className="flex-row items-center" style={{ gap: 4 }}>
+                    <View style={{ backgroundColor: "#1F2937", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text className="text-gray-400 text-xs">5 dias úteis</Text>
+                    </View>
+                    <ChevronRight size={16} color="#4B5563" />
+                  </View>
+                </View>
+                <AreaChart data={graficoFaltas} color="#F87171" height={150} />
+              </View>
+            </TouchableOpacity>
+          </View>
+
+          {/* Donut de assiduidade */}
+          <View className="px-6 mb-3">
+            <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/turmas")}>
+              <View
+                className="rounded-2xl p-5 flex-row items-center justify-between"
+                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+              >
+                <View className="flex-1 pr-4">
+                  <View className="flex-row items-center mb-1" style={{ gap: 8 }}>
+                    <PieChart size={16} color="#34D399" />
+                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Assiduidade geral</Text>
+                  </View>
+                  <Text className="text-gray-500 text-xs">
+                    Percentagem de presenças confirmadas nos últimos dias úteis, em todas as turmas. Toca para ver o detalhe.
                   </Text>
                 </View>
-                <Text className="text-gray-500 text-xs">
-                  Percentagem de presenças confirmadas nos últimos dias úteis, em todas as turmas. Toca para ver o detalhe.
-                </Text>
+                <DonutChart percentagem={assiduidade} cor="#34D399" legenda="Presença" />
               </View>
-              <DonutChart percentagem={assiduidade} cor="#34D399" legenda="Presença" />
-            </View>
-          </TouchableOpacity>
-        </View>
+            </TouchableOpacity>
+          </View>
+        </>
       )}
 
       {/* Acesso rápido */}
@@ -385,12 +565,12 @@ export default function DashboardScreen() {
           )}
 
           {role !== "admin" && (
-  <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
-)}
-          <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
+            <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
+          )}
 
           {role !== "encarregado" && (
             <>
+              <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
               <AcessoRapidoItem Icon={CheckCircle2} label="Registar Presença" onPress={() => router.push("/registar-presenca")} />
               <AcessoRapidoItem Icon={AlertTriangle} label="Chamadas de Atenção" onPress={() => router.push("/chamadas-atencao")} />
             </>
