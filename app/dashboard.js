@@ -5,9 +5,11 @@ import { signOut } from "firebase/auth";
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit } from "firebase/firestore";
 import { auth, db } from "../firebaseConfig";
 import { useAuth } from "../context/AuthContext";
+import { useTheme } from "../context/ThemeContext";
 import AnimatedNumber from "../components/AnimatedNumber";
 import AreaChart from "../components/AreaChart";
 import DonutChart from "../components/DonutChart";
+import ThemeToggle from "../components/ThemeToggle";
 import {
   School,
   GraduationCap,
@@ -26,6 +28,27 @@ const ROLE_LABEL = {
   admin: "Administrador",
   professor: "Professor",
   encarregado: "Encarregado de Educação",
+};
+
+const PALETA = {
+  dark: {
+    fundo: "#0B1120",
+    cartao: "#111827",
+    borda: "#1F2937",
+    texto: "#F8FAFC",
+    textoSecundario: "#64748B",
+    destaqueBg: "#22D3EE",
+    destaqueTexto: "#0B1120",
+  },
+  light: {
+    fundo: "#F8FAFC",
+    cartao: "#FFFFFF",
+    borda: "#E2E8F0",
+    texto: "#0F172A",
+    textoSecundario: "#64748B",
+    destaqueBg: "#0F172A",
+    destaqueTexto: "#FFFFFF",
+  },
 };
 
 function seteDiasAtras() {
@@ -75,8 +98,7 @@ function corAssiduidade(percentagem) {
   return "#F87171";
 }
 
-// Cartão KPI escuro, clicável, com pequena animação de entrada + de toque
-function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
+function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress, cores }) {
   const opacidade = useRef(new Animated.Value(0)).current;
   const deslocamento = useRef(new Animated.Value(14)).current;
   const escala = useRef(new Animated.Value(1)).current;
@@ -99,15 +121,15 @@ function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
   return (
     <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }, { scale: escala }], flex: 1 }}>
       <TouchableOpacity activeOpacity={0.85} onPress={aoPressionar} disabled={!onPress}>
-        <View className="rounded-2xl p-4" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
+        <View style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 16 }}>
           <View className="flex-row items-center justify-between mb-2">
             <View style={{ backgroundColor: `${cor}22`, borderRadius: 10, width: 32, height: 32, alignItems: "center", justifyContent: "center" }}>
               <Icon size={17} color={cor} strokeWidth={2.2} />
             </View>
-            {onPress && <ChevronRight size={16} color="#374151" />}
+            {onPress && <ChevronRight size={16} color={cores.textoSecundario} />}
           </View>
-          <AnimatedNumber value={valor} style={{ color: "#F8FAFC", fontSize: 26, fontWeight: "800" }} />
-          <Text className="text-gray-500 text-xs mt-1">{label}</Text>
+          <AnimatedNumber value={valor} style={{ color: cores.texto, fontSize: 26, fontWeight: "800" }} />
+          <Text style={{ color: cores.textoSecundario, fontSize: 12, marginTop: 4 }}>{label}</Text>
           <View style={{ height: 3, borderRadius: 3, backgroundColor: cor, marginTop: 8, opacity: 0.7 }} />
         </View>
       </TouchableOpacity>
@@ -115,8 +137,7 @@ function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress }) {
   );
 }
 
-// Cartão focado num educando específico (para o perfil Encarregado)
-function CartaoEducando({ educando, atraso = 0, onPress }) {
+function CartaoEducando({ educando, atraso = 0, onPress, cores }) {
   const opacidade = useRef(new Animated.Value(0)).current;
   const deslocamento = useRef(new Animated.Value(14)).current;
 
@@ -132,30 +153,22 @@ function CartaoEducando({ educando, atraso = 0, onPress }) {
   return (
     <Animated.View style={{ opacity: opacidade, transform: [{ translateY: deslocamento }] }}>
       <TouchableOpacity activeOpacity={0.85} onPress={onPress}>
-        <View className="rounded-2xl p-5 mb-3" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
+        <View style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 20, marginBottom: 12 }}>
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-row items-center flex-1" style={{ gap: 12 }}>
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: "#1E293B",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  borderWidth: 1.5,
-                  borderColor: cor,
+                  width: 44, height: 44, borderRadius: 22,
+                  backgroundColor: cores.borda,
+                  alignItems: "center", justifyContent: "center",
+                  borderWidth: 1.5, borderColor: cor,
                 }}
               >
-                <Text style={{ color: cor, fontWeight: "800", fontSize: 14 }}>
-                  {iniciaisDoNome(educando.nome)}
-                </Text>
+                <Text style={{ color: cor, fontWeight: "800", fontSize: 14 }}>{iniciaisDoNome(educando.nome)}</Text>
               </View>
               <View className="flex-1">
-                <Text style={{ color: "#F8FAFC" }} className="font-bold text-base" numberOfLines={1}>
-                  {educando.nome}
-                </Text>
-                <Text className="text-gray-500 text-xs mt-0.5">{educando.turmaNome}</Text>
+                <Text style={{ color: cores.texto, fontWeight: "700", fontSize: 15 }} numberOfLines={1}>{educando.nome}</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 12, marginTop: 2 }}>{educando.turmaNome}</Text>
               </View>
             </View>
             <DonutChart percentagem={educando.assiduidade} tamanho={62} espessura={7} cor={cor} legenda={null} />
@@ -164,37 +177,21 @@ function CartaoEducando({ educando, atraso = 0, onPress }) {
           <AreaChart data={educando.grafico} color="#F87171" height={90} />
 
           <View className="flex-row items-center justify-between mt-3 mb-3">
-            <Text className="text-gray-500 text-xs">
-              Assiduidade nos últimos dias úteis
-            </Text>
-            <View
-              style={{
-                backgroundColor: "#1F2937",
-                borderRadius: 999,
-                paddingHorizontal: 10,
-                paddingVertical: 3,
-              }}
-            >
-              <Text style={{ color: educando.faltasMes > 0 ? "#F87171" : "#94A3B8", fontSize: 11, fontWeight: "600" }}>
+            <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>Assiduidade nos últimos dias úteis</Text>
+            <View style={{ backgroundColor: cores.borda, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+              <Text style={{ color: educando.faltasMes > 0 ? "#F87171" : cores.textoSecundario, fontSize: 11, fontWeight: "600" }}>
                 {educando.faltasMes} {educando.faltasMes === 1 ? "falta" : "faltas"} este mês
               </Text>
             </View>
           </View>
 
           {educando.ultimaChamada && (
-            <View
-              className="rounded-xl p-3 mb-3"
-              style={{ backgroundColor: "#1E1B2E", borderWidth: 1, borderColor: "#3730A3" }}
-            >
+            <View style={{ backgroundColor: "#1E1B2E", borderWidth: 1, borderColor: "#3730A3", borderRadius: 12, padding: 12, marginBottom: 12 }}>
               <View className="flex-row items-center justify-between mb-1">
-                <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: "700" }}>
-                  Última chamada de atenção
-                </Text>
-                <Text className="text-gray-500" style={{ fontSize: 11 }}>{educando.ultimaChamada.data}</Text>
+                <Text style={{ color: "#A78BFA", fontSize: 11, fontWeight: "700" }}>Última chamada de atenção</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>{educando.ultimaChamada.data}</Text>
               </View>
-              <Text style={{ color: "#E2E8F0", fontSize: 12 }} numberOfLines={1}>
-                {educando.ultimaChamada.motivo}
-              </Text>
+              <Text style={{ color: "#E2E8F0", fontSize: 12 }} numberOfLines={1}>{educando.ultimaChamada.motivo}</Text>
             </View>
           )}
 
@@ -208,7 +205,7 @@ function CartaoEducando({ educando, atraso = 0, onPress }) {
   );
 }
 
-function AcessoRapidoItem({ label, Icon, destaque, onPress }) {
+function AcessoRapidoItem({ label, Icon, destaque, onPress, cores }) {
   const escala = useRef(new Animated.Value(1)).current;
   const aoPressionar = () => {
     Animated.sequence([
@@ -224,13 +221,17 @@ function AcessoRapidoItem({ label, Icon, destaque, onPress }) {
         onPress={aoPressionar}
         activeOpacity={0.85}
         className="rounded-xl p-4 flex-row justify-between items-center"
-        style={{ backgroundColor: destaque ? "#22D3EE" : "#111827", borderWidth: destaque ? 0 : 1, borderColor: "#1F2937" }}
+        style={{
+          backgroundColor: destaque ? cores.destaqueBg : cores.cartao,
+          borderWidth: destaque ? 0 : 1,
+          borderColor: cores.borda,
+        }}
       >
         <View className="flex-row items-center" style={{ gap: 10 }}>
-          <Icon size={18} color={destaque ? "#0B1120" : "#94A3B8"} strokeWidth={2.2} />
-          <Text style={{ color: destaque ? "#0B1120" : "#E2E8F0", fontWeight: "600", fontSize: 15 }}>{label}</Text>
+          <Icon size={18} color={destaque ? cores.destaqueTexto : cores.textoSecundario} strokeWidth={2.2} />
+          <Text style={{ color: destaque ? cores.destaqueTexto : cores.texto, fontWeight: "600", fontSize: 15 }}>{label}</Text>
         </View>
-        <ChevronRight size={18} color={destaque ? "#0B1120" : "#4B5563"} />
+        <ChevronRight size={18} color={destaque ? cores.destaqueTexto : cores.textoSecundario} />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -239,6 +240,8 @@ function AcessoRapidoItem({ label, Icon, destaque, onPress }) {
 export default function DashboardScreen() {
   const router = useRouter();
   const { user, userData, loading } = useAuth();
+  const { theme } = useTheme();
+  const cores = PALETA[theme] || PALETA.dark;
 
   const [totalAlunos, setTotalAlunos] = useState(0);
   const [totalTurmas, setTotalTurmas] = useState(0);
@@ -254,7 +257,6 @@ export default function DashboardScreen() {
     if (!loading && !user) router.replace("/");
   }, [loading, user]);
 
-  // Estatísticas gerais (admin / professor)
   useEffect(() => {
     if (!user || userData?.role === "encarregado") return;
 
@@ -293,7 +295,6 @@ export default function DashboardScreen() {
     };
   }, [user, userData]);
 
-  // Dados focados nos educandos (perfil Encarregado)
   useEffect(() => {
     if (!user || userData?.role !== "encarregado") return;
 
@@ -408,7 +409,7 @@ export default function DashboardScreen() {
 
   if (loading || !user) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0B1120", justifyContent: "center", alignItems: "center" }}>
+      <View style={{ flex: 1, backgroundColor: cores.fundo, justifyContent: "center", alignItems: "center" }}>
         <ActivityIndicator size="large" color="#22D3EE" />
       </View>
     );
@@ -417,57 +418,57 @@ export default function DashboardScreen() {
   const role = userData?.role;
 
   return (
-    <ScrollView style={{ flex: 1, backgroundColor: "#0B1120" }}>
-      {/* Cabeçalho */}
+    <ScrollView style={{ flex: 1, backgroundColor: cores.fundo }}>
       <View className="pt-14 pb-6 px-6">
         <View className="flex-row justify-between items-start gap-3">
           <View className="flex-1">
-            <Text className="text-gray-500 text-xs mb-1">
+            <Text style={{ color: cores.textoSecundario, fontSize: 11, marginBottom: 4 }}>
               {new Date().toLocaleDateString("pt-PT", { weekday: "long", day: "2-digit", month: "long" })}
             </Text>
-            <Text style={{ color: "#F8FAFC" }} className="text-xl font-bold" numberOfLines={1}>
+            <Text style={{ color: cores.texto, fontSize: 20, fontWeight: "700" }} numberOfLines={1}>
               Olá, {userData?.nome || user.email}
             </Text>
             <View className="flex-row items-center mt-1">
               <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: "#22D3EE", marginRight: 6 }} />
-              <Text className="text-gray-500 text-sm">{ROLE_LABEL[role] || "Utilizador"}</Text>
+              <Text style={{ color: cores.textoSecundario, fontSize: 13 }}>{ROLE_LABEL[role] || "Utilizador"}</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={terminarSessao} className="flex-row items-center" style={{ gap: 4 }}>
-            <LogOut size={15} color="#64748B" />
-            <Text className="text-gray-500 text-sm">Sair</Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center" style={{ gap: 10 }}>
+            <ThemeToggle />
+            <TouchableOpacity onPress={terminarSessao} className="flex-row items-center" style={{ gap: 4 }}>
+              <LogOut size={15} color={cores.textoSecundario} />
+              <Text style={{ color: cores.textoSecundario, fontSize: 13 }}>Sair</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
       {role === "encarregado" ? (
         <>
-          {/* Notificações — pequeno destaque no topo */}
           <View className="px-6 mb-4">
             <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/notificacoes")}>
               <View
                 className="rounded-2xl p-4 flex-row items-center justify-between"
-                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+                style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda }}
               >
                 <View className="flex-row items-center" style={{ gap: 10 }}>
                   <View style={{ backgroundColor: "#A78BFA22", borderRadius: 10, width: 34, height: 34, alignItems: "center", justifyContent: "center" }}>
                     <Bell size={17} color="#A78BFA" strokeWidth={2.2} />
                   </View>
                   <View>
-                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Notificações</Text>
-                    <Text className="text-gray-500 text-xs">
+                    <Text style={{ color: cores.texto, fontWeight: "600" }}>Notificações</Text>
+                    <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>
                       {notificacoesNaoLidas > 0 ? `${notificacoesNaoLidas} por ler` : "Tudo em dia"}
                     </Text>
                   </View>
                 </View>
-                <ChevronRight size={18} color="#4B5563" />
+                <ChevronRight size={18} color={cores.textoSecundario} />
               </View>
             </TouchableOpacity>
           </View>
 
-          {/* Cartões focados em cada educando */}
           <View className="px-6">
-            <Text style={{ color: "#F8FAFC" }} className="font-semibold mb-4">
+            <Text style={{ color: cores.texto, fontWeight: "600", marginBottom: 16 }}>
               Meu{educandosDetalhados.length > 1 ? "s" : ""} educando{educandosDetalhados.length > 1 ? "s" : ""}
             </Text>
 
@@ -476,10 +477,10 @@ export default function DashboardScreen() {
             {!carregandoEducandos && educandosDetalhados.length === 0 && (
               <View
                 className="rounded-2xl p-6 mb-4 items-center"
-                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+                style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda }}
               >
-                <GraduationCap size={28} color="#374151" />
-                <Text className="text-gray-400 text-sm text-center mt-3">
+                <GraduationCap size={28} color={cores.textoSecundario} />
+                <Text style={{ color: cores.textoSecundario, fontSize: 13, textAlign: "center", marginTop: 12 }}>
                   Ainda não há nenhum educando associado à tua conta.{"\n"}Fala com a administração da escola para ligarem o teu perfil ao aluno certo.
                 </Text>
               </View>
@@ -491,38 +492,37 @@ export default function DashboardScreen() {
                 educando={educando}
                 atraso={i * 100}
                 onPress={() => router.push(`/aluno/${educando.id}`)}
+                cores={cores}
               />
             ))}
           </View>
         </>
       ) : (
         <>
-          {/* KPIs — Admin / Professor */}
           <View className="px-6">
             <View className="flex-row gap-3 mb-3">
-              <KpiCard Icon={School} label="Turmas" valor={totalTurmas} cor="#22D3EE" atraso={0} onPress={() => router.push("/turmas")} />
-              <KpiCard Icon={GraduationCap} label="Alunos" valor={totalAlunos} cor="#818CF8" atraso={80} onPress={() => router.push("/turmas")} />
+              <KpiCard Icon={School} label="Turmas" valor={totalTurmas} cor="#22D3EE" atraso={0} onPress={() => router.push("/turmas")} cores={cores} />
+              <KpiCard Icon={GraduationCap} label="Alunos" valor={totalAlunos} cor="#818CF8" atraso={80} onPress={() => router.push("/turmas")} cores={cores} />
             </View>
             <View className="flex-row gap-3 mb-3">
-              <KpiCard Icon={ClipboardList} label="Faltas hoje" valor={faltasHoje} cor="#F87171" atraso={160} onPress={() => router.push("/registar-presenca")} />
-              <KpiCard Icon={AlertTriangle} label="Chamadas (mês)" valor={chamadasMes} cor="#FBBF24" atraso={240} onPress={() => router.push("/chamadas-atencao")} />
+              <KpiCard Icon={ClipboardList} label="Faltas hoje" valor={faltasHoje} cor="#F87171" atraso={160} onPress={() => router.push("/registar-presenca")} cores={cores} />
+              <KpiCard Icon={AlertTriangle} label="Chamadas (mês)" valor={chamadasMes} cor="#FBBF24" atraso={240} onPress={() => router.push("/chamadas-atencao")} cores={cores} />
             </View>
           </View>
 
-          {/* Gráfico de área */}
           <View className="px-6 mb-3">
             <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/chamadas-atencao")}>
-              <View className="rounded-2xl p-4" style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}>
+              <View style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 16 }}>
                 <View className="flex-row justify-between items-center mb-3">
                   <View className="flex-row items-center" style={{ gap: 8 }}>
                     <ClipboardList size={16} color="#F87171" />
-                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Faltas nos últimos dias</Text>
+                    <Text style={{ color: cores.texto, fontWeight: "600" }}>Faltas nos últimos dias</Text>
                   </View>
                   <View className="flex-row items-center" style={{ gap: 4 }}>
-                    <View style={{ backgroundColor: "#1F2937", borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
-                      <Text className="text-gray-400 text-xs">5 dias úteis</Text>
+                    <View style={{ backgroundColor: cores.borda, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+                      <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>5 dias úteis</Text>
                     </View>
-                    <ChevronRight size={16} color="#4B5563" />
+                    <ChevronRight size={16} color={cores.textoSecundario} />
                   </View>
                 </View>
                 <AreaChart data={graficoFaltas} color="#F87171" height={150} />
@@ -530,19 +530,18 @@ export default function DashboardScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* Donut de assiduidade */}
           <View className="px-6 mb-3">
             <TouchableOpacity activeOpacity={0.85} onPress={() => router.push("/turmas")}>
               <View
                 className="rounded-2xl p-5 flex-row items-center justify-between"
-                style={{ backgroundColor: "#111827", borderWidth: 1, borderColor: "#1F2937" }}
+                style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda }}
               >
                 <View className="flex-1 pr-4">
                   <View className="flex-row items-center mb-1" style={{ gap: 8 }}>
                     <PieChart size={16} color="#34D399" />
-                    <Text style={{ color: "#F8FAFC" }} className="font-semibold">Assiduidade geral</Text>
+                    <Text style={{ color: cores.texto, fontWeight: "600" }}>Assiduidade geral</Text>
                   </View>
-                  <Text className="text-gray-500 text-xs">
+                  <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>
                     Percentagem de presenças confirmadas nos últimos dias úteis, em todas as turmas. Toca para ver o detalhe.
                   </Text>
                 </View>
@@ -553,30 +552,27 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {/* Acesso rápido */}
       <View className="px-6 pt-4">
-        <Text style={{ color: "#F8FAFC" }} className="font-semibold mb-4">
-          Acesso rápido
-        </Text>
+        <Text style={{ color: cores.texto, fontWeight: "600", marginBottom: 16 }}>Acesso rápido</Text>
 
         <View className="gap-3 pb-10">
           {role === "admin" && (
-            <AcessoRapidoItem Icon={Settings} label="Painel de Administração" destaque onPress={() => router.push("/admin")} />
+            <AcessoRapidoItem Icon={Settings} label="Painel de Administração" destaque onPress={() => router.push("/admin")} cores={cores} />
           )}
 
           {role !== "admin" && (
-            <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} />
+            <AcessoRapidoItem Icon={Bell} label="Notificações" onPress={() => router.push("/notificacoes")} cores={cores} />
           )}
 
           {role !== "encarregado" && (
             <>
-              <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} />
-              <AcessoRapidoItem Icon={CheckCircle2} label="Registar Presença" onPress={() => router.push("/registar-presenca")} />
-              <AcessoRapidoItem Icon={AlertTriangle} label="Chamadas de Atenção" onPress={() => router.push("/chamadas-atencao")} />
+              <AcessoRapidoItem Icon={School} label="Turmas e Alunos" onPress={() => router.push("/turmas")} cores={cores} />
+              <AcessoRapidoItem Icon={CheckCircle2} label="Registar Presença" onPress={() => router.push("/registar-presenca")} cores={cores} />
+              <AcessoRapidoItem Icon={AlertTriangle} label="Chamadas de Atenção" onPress={() => router.push("/chamadas-atencao")} cores={cores} />
             </>
           )}
 
-          <AcessoRapidoItem Icon={CalendarDays} label="Reuniões" onPress={() => router.push("/reunioes")} />
+          <AcessoRapidoItem Icon={CalendarDays} label="Reuniões" onPress={() => router.push("/reunioes")} cores={cores} />
         </View>
       </View>
     </ScrollView>
