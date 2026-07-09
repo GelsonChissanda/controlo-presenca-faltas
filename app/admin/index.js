@@ -1,5 +1,6 @@
-import { View, Text, ScrollView, TouchableOpacity } from "react-native";
+import { View, Text, ScrollView, TouchableOpacity, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { criarFaceSetDaEscola } from "../../utils/criarFaceSet";
 
 export default function AdminHomeScreen() {
   const router = useRouter();
@@ -10,6 +11,15 @@ export default function AdminHomeScreen() {
     { label: "Gerir Professores", rota: "/admin/professores" },
     { label: "Gerir Utilizadores", rota: "/admin/utilizadores" },
   ];
+
+  const inicializarFaceSet = async () => {
+    try {
+      const resultado = await criarFaceSetDaEscola();
+      Alert.alert("Resultado", JSON.stringify(resultado));
+    } catch (erro) {
+      Alert.alert("Erro", erro.message);
+    }
+  };
 
   return (
     <ScrollView className="flex-1 bg-gray-50">
@@ -31,6 +41,15 @@ export default function AdminHomeScreen() {
             <Text className="text-gray-400">›</Text>
           </TouchableOpacity>
         ))}
+
+        <TouchableOpacity
+          onPress={inicializarFaceSet}
+          className="bg-purple-600 rounded-lg py-3 mt-4"
+        >
+          <Text className="text-white text-center font-semibold">
+            ⚙️ Inicializar FaceSet (só uma vez)
+          </Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );

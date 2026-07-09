@@ -24,24 +24,24 @@ export default function DonutChart({ percentagem, tamanho = 128, espessura = 12,
   const centro = tamanho / 2;
 
   return (
-    <View style={{ alignItems: "center", justifyContent: "center" }}>
-      <Svg width={tamanho} height={tamanho}>
-        <Circle cx={centro} cy={centro} r={raio} stroke="#1E293B" strokeWidth={espessura} fill="none" />
-        <Circle
-          cx={centro}
-          cy={centro}
-          r={raio}
-          stroke={cor}
-          strokeWidth={espessura}
-          fill="none"
-          strokeDasharray={`${perimetro} ${perimetro}`}
-          strokeDashoffset={offset}
-          strokeLinecap="round"
-          rotation="-90"
-          originX={centro}
-          originY={centro}
-        />
-      </Svg>
+    <View style={{ alignItems: "center", justifyContent: "center", width: tamanho, height: tamanho }}>
+      {/* Roda-se a View inteira em vez de usar rotation/origin no Circle (evita bug no web) */}
+      <View style={{ transform: [{ rotate: "-90deg" }] }}>
+        <Svg width={tamanho} height={tamanho}>
+          <Circle cx={centro} cy={centro} r={raio} stroke="#1E293B" strokeWidth={espessura} fill="none" />
+          <Circle
+            cx={centro}
+            cy={centro}
+            r={raio}
+            stroke={cor}
+            strokeWidth={espessura}
+            fill="none"
+            strokeDasharray={`${perimetro} ${perimetro}`}
+            strokeDashoffset={offset}
+            strokeLinecap="round"
+          />
+        </Svg>
+      </View>
       <View style={{ position: "absolute", alignItems: "center" }}>
         <Text className="text-white text-2xl font-bold">{Math.round(valorAnimado)}%</Text>
         {legenda && <Text className="text-gray-400 text-xs mt-1">{legenda}</Text>}
