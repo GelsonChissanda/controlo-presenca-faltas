@@ -1,7 +1,9 @@
 import XLSX from "xlsx-js-style";
-import { Platform } from "react-native";
+import { Platform, Alert } from "react-native";
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import * as FileSystem from "expo-file-system/legacy";
+import * as Sharing from "expo-sharing";
 
 const COR_FUNDO_ESCURO = "0F172A";
 const COR_TEXTO_CLARO = "FFFFFF";
@@ -86,166 +88,175 @@ function contarPorDia(presencas, dias, estado) {
 }
 
 export async function exportarPresencasDaTurma(turmaId, nomeTurma, alunos) {
-  const q = query(collection(db, "presencas"), where("turma_id", "==", turmaId));
-  const snapshot = await getDocs(q);
-  const presencas = snapshot.docs.map((d) => d.data());
+  try {
+    const q = query(collection(db, "presencas"), where("turma_id", "==", turmaId));
+    const snapshot = await getDocs(q);
+    const presencas = snapshot.docs.map((d) => d.data());
 
-  const linhasAlunos = alunos.map((aluno) => {
-    const doAluno = presencas.filter((p) => p.aluno_id === aluno.id);
-    return {
-      numeroProcesso: aluno.numero_processo,
-      nome: aluno.nome,
-      presencas: doAluno.filter((p) => p.estado === "presente").length,
-      faltas: doAluno.filter((p) => p.estado === "falta").length,
-      atrasos: doAluno.filter((p) => p.estado === "atraso").length,
-    };
-  });
+    const linhasAlunos = alunos.map((aluno) => {
+      const doAluno = presencas.filter((p) => p.aluno_id === aluno.id);
+      return {
+        numeroProcesso: aluno.numero_processo,
+        nome: aluno.nome,
+        presencas: doAluno.filter((p) => p.estado === "presente").length,
+        faltas: doAluno.filter((p) => p.estado === "falta").length,
+        atrasos: doAluno.filter((p) => p.estado === "atraso").length,
+      };
+    });
 
-  const totalAlunos = linhasAlunos.length;
-  const totalFaltas = linhasAlunos.reduce((s, a) => s + a.faltas, 0);
-  const totalAtrasos = linhasAlunos.reduce((s, a) => s + a.atrasos, 0);
-  const totalPresencas = linhasAlunos.reduce((s, a) => s + a.presencas, 0);
-  const totalRegistos = totalPresencas + totalFaltas + totalAtrasos || 1;
-  const mediaAssiduidade = Math.round((totalPresencas / totalRegistos) * 100);
+    const totalAlunos = linhasAlunos.length;
+    const totalFaltas = linhasAlunos.reduce((s, a) => s + a.faltas, 0);
+    const totalAtrasos = linhasAlunos.reduce((s, a) => s + a.atrasos, 0);
+    const totalPresencas = linhasAlunos.reduce((s, a) => s + a.presencas, 0);
+    const totalRegistos = totalPresencas + totalFaltas + totalAtrasos || 1;
+    const mediaAssiduidade = Math.round((totalPresencas / totalRegistos) * 100);
 
-  // Dados para o "gráfico" de tendência (últimos 5 dias úteis)
-  const dias = ultimosDiasUteis(5);
-  const labelsDias = dias.map((d) => d.toLocaleDateString("pt-PT", { weekday: "short" }).replace(".", "").slice(0, 3));
-  const faltasPorDia = contarPorDia(presencas, dias, "falta");
-  const maxFaltasDia = Math.max(...faltasPorDia, 1);
-  const ALTURA_BARRA = 8; // nº de linhas de altura do gráfico
+    // Dados para o "gráfico" de tendência (últimos 5 dias úteis)
+    const dias = ultimosDiasUteis(5);
+    const labelsDias = dias.map((d) => d.toLocaleDateString("pt-PT", { weekday: "short" }).replace(".", "").slice(0, 3));
+    const faltasPorDia = contarPorDia(presencas, dias, "falta");
+    const maxFaltasDia = Math.max(...faltasPorDia, 1);
+    const ALTURA_BARRA = 8; // nº de linhas de altura do gráfico
 
-  const workbook = XLSX.utils.book_new();
+    const workbook = XLSX.utils.book_new();
 
-  // =================== FOLHA 1: RESUMO ===================
-  const resumo = [];
+    // =================== FOLHA 1: RESUMO ===================
+    const resumo = [];
 
-  resumo[0] = [celula(`Controlo de Presença — ${nomeTurma}`, ESTILO_TITULO)];
-  resumo[1] = [celula(`Relatório gerado em ${new Date().toLocaleDateString("pt-PT")}`, ESTILO_SUBTITULO)];
-  resumo[2] = [];
+    resumo[0] = [celula(`Controlo de Presença — ${nomeTurma}`, ESTILO_TITULO)];
+    resumo[1] = [celula(`Relatório gerado em ${new Date().toLocaleDateString("pt-PT")}`, ESTILO_SUBTITULO)];
+    resumo[2] = [];
 
-  // --- Cartões de KPI ---
-  resumo[3] = [
-    celula("Total de Alunos", ESTILO_LABEL_CARTAO),
-    celula("Faltas Registadas", ESTILO_LABEL_CARTAO),
-    celula("Atrasos", ESTILO_LABEL_CARTAO),
-    celula("Assiduidade Média", ESTILO_LABEL_CARTAO),
-    celula("", {}),
-  ];
-  resumo[4] = [
-    celula(totalAlunos, ESTILO_VALOR_CARTAO),
-    celula(totalFaltas, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: COR_FALTA_FORTE } } }),
-    celula(totalAtrasos, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: "D97706" } } }),
-    celula(`${mediaAssiduidade}%`, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: COR_OK_FORTE } } }),
-    celula("", {}),
-  ];
-  resumo[5] = [];
+    // --- Cartões de KPI ---
+    resumo[3] = [
+      celula("Total de Alunos", ESTILO_LABEL_CARTAO),
+      celula("Faltas Registadas", ESTILO_LABEL_CARTAO),
+      celula("Atrasos", ESTILO_LABEL_CARTAO),
+      celula("Assiduidade Média", ESTILO_LABEL_CARTAO),
+      celula("", {}),
+    ];
+    resumo[4] = [
+      celula(totalAlunos, ESTILO_VALOR_CARTAO),
+      celula(totalFaltas, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: COR_FALTA_FORTE } } }),
+      celula(totalAtrasos, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: "D97706" } } }),
+      celula(`${mediaAssiduidade}%`, { ...ESTILO_VALOR_CARTAO, font: { ...ESTILO_VALOR_CARTAO.font, color: { rgb: COR_OK_FORTE } } }),
+      celula("", {}),
+    ];
+    resumo[5] = [];
 
-  // --- Gráfico de tendência de faltas (barras feitas com células) ---
-  resumo[6] = [celula("📉  Tendência de Faltas — últimos 5 dias úteis", ESTILO_SECCAO)];
-  resumo[7] = [];
+    // --- Gráfico de tendência de faltas (barras feitas com células) ---
+    resumo[6] = [celula("📉  Tendência de Faltas — últimos 5 dias úteis", ESTILO_SECCAO)];
+    resumo[7] = [];
 
-  const linhaBaseGrafico = 8; // primeira linha do "gráfico" de barras
-  for (let l = 0; l < ALTURA_BARRA; l++) {
-    const linha = [];
-    for (let c = 0; c < faltasPorDia.length; c++) {
-      const valor = faltasPorDia[c];
-      const alturaPreenchida = Math.round((valor / maxFaltasDia) * ALTURA_BARRA);
-      const nivelAtual = ALTURA_BARRA - l; // conta de baixo para cima
-      linha[c] = nivelAtual <= alturaPreenchida && valor > 0 ? barraPreenchida(COR_FALTA) : barraVazia();
+    const linhaBaseGrafico = 8; // primeira linha do "gráfico" de barras
+    for (let l = 0; l < ALTURA_BARRA; l++) {
+      const linha = [];
+      for (let c = 0; c < faltasPorDia.length; c++) {
+        const valor = faltasPorDia[c];
+        const alturaPreenchida = Math.round((valor / maxFaltasDia) * ALTURA_BARRA);
+        const nivelAtual = ALTURA_BARRA - l; // conta de baixo para cima
+        linha[c] = nivelAtual <= alturaPreenchida && valor > 0 ? barraPreenchida(COR_FALTA) : barraVazia();
+      }
+      resumo[linhaBaseGrafico + l] = linha;
     }
-    resumo[linhaBaseGrafico + l] = linha;
-  }
-  // valores no topo de cada barra
-  resumo[linhaBaseGrafico + ALTURA_BARRA] = faltasPorDia.map((v) =>
-    celula(v, { font: { bold: true, sz: 10, color: { rgb: COR_FALTA_FORTE } }, alignment: { horizontal: "center" } })
-  );
-  // labels dos dias
-  resumo[linhaBaseGrafico + ALTURA_BARRA + 1] = labelsDias.map((l) =>
-    celula(l, { font: { sz: 10, color: { rgb: COR_MUTED } }, alignment: { horizontal: "center" } })
-  );
+    // valores no topo de cada barra
+    resumo[linhaBaseGrafico + ALTURA_BARRA] = faltasPorDia.map((v) =>
+      celula(v, { font: { bold: true, sz: 10, color: { rgb: COR_FALTA_FORTE } }, alignment: { horizontal: "center" } })
+    );
+    // labels dos dias
+    resumo[linhaBaseGrafico + ALTURA_BARRA + 1] = labelsDias.map((l) =>
+      celula(l, { font: { sz: 10, color: { rgb: COR_MUTED } }, alignment: { horizontal: "center" } })
+    );
 
-  const linhaAposGrafico = linhaBaseGrafico + ALTURA_BARRA + 3;
+    const linhaAposGrafico = linhaBaseGrafico + ALTURA_BARRA + 3;
 
-  // --- Barra de assiduidade geral (progresso horizontal) ---
-  resumo[linhaAposGrafico] = [celula("🟢  Assiduidade Geral da Turma", ESTILO_SECCAO)];
-  resumo[linhaAposGrafico + 1] = [];
+    // --- Barra de assiduidade geral (progresso horizontal) ---
+    resumo[linhaAposGrafico] = [celula("🟢  Assiduidade Geral da Turma", ESTILO_SECCAO)];
+    resumo[linhaAposGrafico + 1] = [];
 
-  const SEGMENTOS_BARRA = 20;
-  const segmentosPreenchidos = Math.round((mediaAssiduidade / 100) * SEGMENTOS_BARRA);
-  const linhaProgresso = [];
-  for (let i = 0; i < SEGMENTOS_BARRA; i++) {
-    linhaProgresso.push(i < segmentosPreenchidos ? barraPreenchida(COR_OK) : barraVazia());
-  }
-  // distribui os 20 segmentos pelas 5 colunas disponíveis (4 segmentos por coluna via merge visual simplificado)
-  resumo[linhaAposGrafico + 2] = [
-    { v: " ", t: "s", s: linhaProgresso[0].s },
-  ];
-  // Como só temos 5 colunas de largura definida, construímos a barra ocupando as 5 colunas com gradação proporcional
-  const colunasBarraProgresso = 5;
-  const linhaBarraSimplificada = [];
-  for (let c = 0; c < colunasBarraProgresso; c++) {
-    const limiteInferior = (c / colunasBarraProgresso) * 100;
-    linhaBarraSimplificada.push(mediaAssiduidade > limiteInferior ? barraPreenchida(COR_OK) : barraVazia());
-  }
-  resumo[linhaAposGrafico + 2] = linhaBarraSimplificada;
-  resumo[linhaAposGrafico + 3] = [
-    celula(`${mediaAssiduidade}% de assiduidade nos registos desta turma`, {
-      font: { italic: true, sz: 10, color: { rgb: COR_MUTED } },
-    }),
-  ];
+    const SEGMENTOS_BARRA = 20;
+    const segmentosPreenchidos = Math.round((mediaAssiduidade / 100) * SEGMENTOS_BARRA);
+    const linhaProgresso = [];
+    for (let i = 0; i < SEGMENTOS_BARRA; i++) {
+      linhaProgresso.push(i < segmentosPreenchidos ? barraPreenchida(COR_OK) : barraVazia());
+    }
+    // Como só temos 5 colunas de largura definida, construímos a barra ocupando as 5 colunas com gradação proporcional
+    const colunasBarraProgresso = 5;
+    const linhaBarraSimplificada = [];
+    for (let c = 0; c < colunasBarraProgresso; c++) {
+      const limiteInferior = (c / colunasBarraProgresso) * 100;
+      linhaBarraSimplificada.push(mediaAssiduidade > limiteInferior ? barraPreenchida(COR_OK) : barraVazia());
+    }
+    resumo[linhaAposGrafico + 2] = linhaBarraSimplificada;
+    resumo[linhaAposGrafico + 3] = [
+      celula(`${mediaAssiduidade}% de assiduidade nos registos desta turma`, {
+        font: { italic: true, sz: 10, color: { rgb: COR_MUTED } },
+      }),
+    ];
 
-  const wsResumo = XLSX.utils.aoa_to_sheet(resumo);
-  wsResumo["!merges"] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
-    { s: { r: 6, c: 0 }, e: { r: 6, c: 4 } },
-    { s: { r: linhaAposGrafico, c: 0 }, e: { r: linhaAposGrafico, c: 4 } },
-    { s: { r: linhaAposGrafico + 3, c: 0 }, e: { r: linhaAposGrafico + 3, c: 4 } },
-  ];
-  wsResumo["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
-  XLSX.utils.book_append_sheet(workbook, wsResumo, "Resumo");
+    const wsResumo = XLSX.utils.aoa_to_sheet(resumo);
+    wsResumo["!merges"] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 4 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } },
+      { s: { r: 6, c: 0 }, e: { r: 6, c: 4 } },
+      { s: { r: linhaAposGrafico, c: 0 }, e: { r: linhaAposGrafico, c: 4 } },
+      { s: { r: linhaAposGrafico + 3, c: 0 }, e: { r: linhaAposGrafico + 3, c: 4 } },
+    ];
+    wsResumo["!cols"] = [{ wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
+    XLSX.utils.book_append_sheet(workbook, wsResumo, "Resumo");
 
-  // =================== FOLHA 2: DETALHE POR ALUNO ===================
-  const cabecalho = ["Nº Processo", "Nome", "Presenças", "Faltas", "Atrasos"].map((t) =>
-    celula(t, ESTILO_CABECALHO_TABELA)
-  );
-  const linhasTabela = linhasAlunos.map((a) => [
-    celula(a.numeroProcesso, ESTILO_CELULA),
-    celula(a.nome, ESTILO_CELULA),
-    celula(a.presencas, ESTILO_CELULA_OK),
-    celula(a.faltas, a.faltas > 0 ? ESTILO_CELULA_FALTA : ESTILO_CELULA),
-    celula(a.atrasos, a.atrasos > 0 ? ESTILO_CELULA_FALTA : ESTILO_CELULA),
-  ]);
-  const wsDetalhe = XLSX.utils.aoa_to_sheet([cabecalho, ...linhasTabela]);
-  wsDetalhe["!cols"] = [{ wch: 14 }, { wch: 26 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
-  XLSX.utils.book_append_sheet(workbook, wsDetalhe, "Detalhe por Aluno");
+    // =================== FOLHA 2: DETALHE POR ALUNO ===================
+    const cabecalho = ["Nº Processo", "Nome", "Presenças", "Faltas", "Atrasos"].map((t) =>
+      celula(t, ESTILO_CABECALHO_TABELA)
+    );
+    const linhasTabela = linhasAlunos.map((a) => [
+      celula(a.numeroProcesso, ESTILO_CELULA),
+      celula(a.nome, ESTILO_CELULA),
+      celula(a.presencas, ESTILO_CELULA_OK),
+      celula(a.faltas, a.faltas > 0 ? ESTILO_CELULA_FALTA : ESTILO_CELULA),
+      celula(a.atrasos, a.atrasos > 0 ? ESTILO_CELULA_FALTA : ESTILO_CELULA),
+    ]);
+    const wsDetalhe = XLSX.utils.aoa_to_sheet([cabecalho, ...linhasTabela]);
+    wsDetalhe["!cols"] = [{ wch: 14 }, { wch: 26 }, { wch: 12 }, { wch: 10 }, { wch: 10 }];
+    XLSX.utils.book_append_sheet(workbook, wsDetalhe, "Detalhe por Aluno");
 
-  const nomeFicheiro = `presencas_${nomeTurma.replace(/\s/g, "_")}.xlsx`;
+    const nomeFicheiro = `presencas_${nomeTurma.replace(/\s/g, "_")}.xlsx`;
 
-  if (Platform.OS === "web") {
-    const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([wbout], { type: "application/octet-stream" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = nomeFicheiro;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    return;
-  }
+    if (Platform.OS === "web") {
+      const wbout = XLSX.write(workbook, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([wbout], { type: "application/octet-stream" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = nomeFicheiro;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      return;
+    }
 
-  const FileSystem = await import("expo-file-system");
-  const Sharing = await import("expo-sharing");
-  const base64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
-  const uri = FileSystem.cacheDirectory + nomeFicheiro;
-  await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
-  if (await Sharing.isAvailableAsync()) {
+    // --- iOS / Android ---
+    const base64 = XLSX.write(workbook, { type: "base64", bookType: "xlsx" });
+    const uri = FileSystem.cacheDirectory + nomeFicheiro;
+
+    await FileSystem.writeAsStringAsync(uri, base64, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+
+    const disponivel = await Sharing.isAvailableAsync();
+    if (!disponivel) {
+      Alert.alert("Erro", "A partilha de ficheiros não está disponível neste dispositivo.");
+      return;
+    }
+
     await Sharing.shareAsync(uri, {
       mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       dialogTitle: `Exportar presenças - ${nomeTurma}`,
+      UTI: "com.microsoft.excel.xlsx",
     });
+  } catch (erro) {
+    console.log("Erro ao exportar Excel:", erro);
+    Alert.alert("Erro ao exportar", erro?.message || String(erro));
   }
 }
