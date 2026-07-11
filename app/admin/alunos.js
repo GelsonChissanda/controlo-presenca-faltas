@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
-import { View, Text, ScrollView, TextInput, TouchableOpacity, Modal, ActivityIndicator, Alert } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  TextInput,
+  TouchableOpacity,
+  Modal,
+  ActivityIndicator,
+  Alert,
+} from "react-native";
 import { useRouter } from "expo-router";
-import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where } from "firebase/firestore";
+import { collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 
 export default function AdminAlunosScreen() {
@@ -32,41 +41,76 @@ export default function AdminAlunosScreen() {
   }, []);
 
   const [encarregados, setEncarregados] = useState([]);
-const [encarregadosSelecionados, setEncarregadosSelecionados] = useState([]);
+  const [encarregadosSelecionados, setEncarregadosSelecionados] = useState([]);
 
-useEffect(() => {
-  const q = query(collection(db, "users"), where("role", "==", "encarregado"));
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    setEncarregados(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
-  });
-  return unsubscribe;
-}, []);
+  useEffect(() => {
+    const q = query(
+      collection(db, "users"),
+      where("role", "==", "encarregado"),
+    );
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setEncarregados(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+    });
+    return unsubscribe;
+  }, []);
 
-  const nomeTurma = (id) => turmas.find((t) => t.id === id)?.nome || "Sem turma";
+  const nomeTurma = (id) =>
+    turmas.find((t) => t.id === id)?.nome || "Sem turma";
 
   const abrirNovo = () => {
-  setEditandoId(null);
-  setNome("");
-  setNumeroProcesso("");
-  setTurmaId(turmas[0]?.id || "");
-  setEncarregadosSelecionados([]);
-  setModalVisivel(true);
-};
+    setEditandoId(null);
+    setNome("");
+    setNumeroProcesso("");
+    setTurmaId(turmas[0]?.id || "");
+    setEncarregadosSelecionados([]);
+    setModalVisivel(true);
+  };
 
   const abrirEditar = (aluno) => {
-  setEditandoId(aluno.id);
-  setNome(aluno.nome || "");
-  setNumeroProcesso(aluno.numero_processo || "");
-  setTurmaId(aluno.turma_id || "");
-  setEncarregadosSelecionados(aluno.encarregados_ids || []);
-  setModalVisivel(true);
-};
+    setEditandoId(aluno.id);
+    setNome(aluno.nome || "");
+    setNumeroProcesso(aluno.numero_processo || "");
+    setTurmaId(aluno.turma_id || "");
+    setEncarregadosSelecionados(aluno.encarregados_ids || []);
+    setModalVisivel(true);
+  };
 
-const alternarEncarregado = (uid) => {
-  setEncarregadosSelecionados((prev) =>
-    prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid]
-  );
-};
+  const verificarConsentimentoEAbrirCamera = async (aluno) => {
+    if (!aluno.encarregados_ids || aluno.encarregados_ids.length === 0) {
+      Alert.alert(
+        "Atenção",
+        "Este aluno ainda não tem nenhum encarregado ligado.",
+      );
+      return;
+    }
+
+    try {
+      const verificacoes = await Promise.all(
+        aluno.encarregados_ids.map((uid) => getDoc(doc(db, "users", uid))),
+      );
+      const algumConsentiu = verificacoes.some(
+        (snap) => snap.exists() && snap.data().consentimento_biometria === true,
+      );
+
+      if (!algumConsentiu) {
+        Alert.alert(
+          "Consentimento necessário",
+          "Nenhum encarregado deste aluno autorizou o uso de biometria facial. Vai a Gerir Utilizadores e ativa o consentimento primeiro.",
+        );
+        return;
+      }
+
+      router.push(`/registar-rosto/${aluno.id}`);
+    } catch (error) {
+      Alert.alert("Erro", "Não foi possível verificar o consentimento.");
+    }
+  };
+
+  const alternarEncarregado = (uid) => {
+    setEncarregadosSelecionados((prev) =>
+      prev.includes(uid) ? prev.filter((id) => id !== uid) : [...prev, uid],
+    );
+  };
 
   const guardar = async () => {
     if (!nome || !numeroProcesso || !turmaId) {
@@ -76,24 +120,24 @@ const alternarEncarregado = (uid) => {
     setSalvando(true);
     try {
       if (editandoId) {
-  await updateDoc(doc(db, "alunos", editandoId), {
-    nome,
-    numero_processo: numeroProcesso,
-    turma_id: turmaId,
-    encarregados_ids: encarregadosSelecionados,
-  });
-} else {
-  await addDoc(collection(db, "alunos"), {
-    nome,
-    numero_processo: numeroProcesso,
-    turma_id: turmaId,
-    data_nascimento: null,
-    foto: "",
-    encarregados_ids: encarregadosSelecionados,
-    estado: "ativo",
-    criado_em: new Date(),
-  });
-}
+        await updateDoc(doc(db, "alunos", editandoId), {
+          nome,
+          numero_processo: numeroProcesso,
+          turma_id: turmaId,
+          encarregados_ids: encarregadosSelecionados,
+        });
+      } else {
+        await addDoc(collection(db, "alunos"), {
+          nome,
+          numero_processo: numeroProcesso,
+          turma_id: turmaId,
+          data_nascimento: null,
+          foto: "",
+          encarregados_ids: encarregadosSelecionados,
+          estado: "ativo",
+          criado_em: new Date(),
+        });
+      }
       setModalVisivel(false);
     } catch (error) {
       console.log(error);
@@ -120,7 +164,7 @@ const alternarEncarregado = (uid) => {
             }
           },
         },
-      ]
+      ],
     );
   };
 
@@ -139,7 +183,9 @@ const alternarEncarregado = (uid) => {
           disabled={turmas.length === 0}
           className="bg-slate-900 rounded-lg py-3 mb-6"
         >
-          <Text className="text-white text-center font-semibold">+ Novo Aluno</Text>
+          <Text className="text-white text-center font-semibold">
+            + Novo Aluno
+          </Text>
         </TouchableOpacity>
 
         {turmas.length === 0 && !loading && (
@@ -148,27 +194,46 @@ const alternarEncarregado = (uid) => {
           </Text>
         )}
 
-        {loading && <ActivityIndicator size="large" color="#0f172a" className="mb-6" />}
+        {loading && (
+          <ActivityIndicator size="large" color="#0f172a" className="mb-6" />
+        )}
 
         <View className="gap-3 pb-8">
           {alunos.map((aluno) => (
-            <View key={aluno.id} className="bg-white rounded-xl p-4 border border-gray-200">
-              <Text className="text-base font-semibold text-slate-900">{aluno.nome}</Text>
+            <View
+              key={aluno.id}
+              className="bg-white rounded-xl p-4 border border-gray-200"
+            >
+              <Text className="text-base font-semibold text-slate-900">
+                {aluno.nome}
+              </Text>
               <Text className="text-gray-500 text-sm mt-1">
                 Nº {aluno.numero_processo} • {nomeTurma(aluno.turma_id)}
               </Text>
               <View className="flex-row gap-2 mt-3">
                 <TouchableOpacity
+                  onPress={() => verificarConsentimentoEAbrirCamera(aluno)}
+                  className="flex-1 bg-purple-50 rounded-lg py-2 items-center"
+                >
+                  <Text className="text-purple-700 text-sm font-medium">
+                    {aluno.face_token ? "🔄 Rosto" : "📸 Rosto"}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
                   onPress={() => abrirEditar(aluno)}
                   className="flex-1 bg-gray-100 rounded-lg py-2 items-center"
                 >
-                  <Text className="text-gray-700 text-sm font-medium">Editar</Text>
+                  <Text className="text-gray-700 text-sm font-medium">
+                    Editar
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => apagar(aluno)}
                   className="flex-1 bg-red-50 rounded-lg py-2 items-center"
                 >
-                  <Text className="text-red-600 text-sm font-medium">Apagar</Text>
+                  <Text className="text-red-600 text-sm font-medium">
+                    Apagar
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -208,10 +273,18 @@ const alternarEncarregado = (uid) => {
                     key={turma.id}
                     onPress={() => setTurmaId(turma.id)}
                     className={`px-4 py-2 rounded-full border ${
-                      ativo ? "bg-slate-900 border-slate-900" : "bg-white border-gray-300"
+                      ativo
+                        ? "bg-slate-900 border-slate-900"
+                        : "bg-white border-gray-300"
                     }`}
                   >
-                    <Text className={ativo ? "text-white text-sm font-medium" : "text-gray-600 text-sm"}>
+                    <Text
+                      className={
+                        ativo
+                          ? "text-white text-sm font-medium"
+                          : "text-gray-600 text-sm"
+                      }
+                    >
                       {turma.nome}
                     </Text>
                   </TouchableOpacity>
@@ -219,30 +292,40 @@ const alternarEncarregado = (uid) => {
               })}
             </View>
 
-            <Text className="text-sm text-gray-600 mb-2">Encarregado(s) de Educação</Text>
-<View className="flex-row flex-wrap gap-2 mb-6">
-  {encarregados.map((enc) => {
-    const ativo = encarregadosSelecionados.includes(enc.id);
-    return (
-      <TouchableOpacity
-        key={enc.id}
-        onPress={() => alternarEncarregado(enc.id)}
-        className={`px-4 py-2 rounded-full border ${
-          ativo ? "bg-slate-900 border-slate-900" : "bg-white border-gray-300"
-        }`}
-      >
-        <Text className={ativo ? "text-white text-sm font-medium" : "text-gray-600 text-sm"}>
-          {enc.nome || enc.email}
-        </Text>
-      </TouchableOpacity>
-    );
-  })}
-</View>
-{encarregados.length === 0 && (
-  <Text className="text-amber-600 text-xs mb-4">
-    Ainda não há contas de encarregado registadas.
-  </Text>
-)}
+            <Text className="text-sm text-gray-600 mb-2">
+              Encarregado(s) de Educação
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mb-6">
+              {encarregados.map((enc) => {
+                const ativo = encarregadosSelecionados.includes(enc.id);
+                return (
+                  <TouchableOpacity
+                    key={enc.id}
+                    onPress={() => alternarEncarregado(enc.id)}
+                    className={`px-4 py-2 rounded-full border ${
+                      ativo
+                        ? "bg-slate-900 border-slate-900"
+                        : "bg-white border-gray-300"
+                    }`}
+                  >
+                    <Text
+                      className={
+                        ativo
+                          ? "text-white text-sm font-medium"
+                          : "text-gray-600 text-sm"
+                      }
+                    >
+                      {enc.nome || enc.email}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {encarregados.length === 0 && (
+              <Text className="text-amber-600 text-xs mb-4">
+                Ainda não há contas de encarregado registadas.
+              </Text>
+            )}
 
             <TouchableOpacity
               onPress={guardar}
@@ -252,7 +335,9 @@ const alternarEncarregado = (uid) => {
               {salvando ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text className="text-white text-center font-semibold">Guardar</Text>
+                <Text className="text-white text-center font-semibold">
+                  Guardar
+                </Text>
               )}
             </TouchableOpacity>
 

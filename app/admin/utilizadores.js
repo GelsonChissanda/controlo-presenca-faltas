@@ -31,6 +31,7 @@ export default function AdminUtilizadoresScreen() {
   const [editando, setEditando] = useState(null);
   const [roleSelecionado, setRoleSelecionado] = useState("encarregado");
   const [professorSelecionado, setProfessorSelecionado] = useState("");
+  const [consentimentoBiometria, setConsentimentoBiometria] = useState(false);
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => {
@@ -51,6 +52,7 @@ export default function AdminUtilizadoresScreen() {
     setEditando(utilizador);
     setRoleSelecionado(utilizador.role || "encarregado");
     setProfessorSelecionado(utilizador.professor_id || "");
+    setConsentimentoBiometria(utilizador.consentimento_biometria || false);
     setModalVisivel(true);
   };
 
@@ -60,6 +62,7 @@ export default function AdminUtilizadoresScreen() {
       const dadosParaGuardar = {
         role: roleSelecionado,
         professor_id: roleSelecionado === "professor" ? professorSelecionado : "",
+        consentimento_biometria: consentimentoBiometria,
       };
       await updateDoc(doc(db, "users", editando.id), dadosParaGuardar);
       setModalVisivel(false);
@@ -107,6 +110,9 @@ export default function AdminUtilizadoresScreen() {
                       {u.nome || "Sem nome"}
                     </Text>
                     <Text className="text-gray-500 text-sm mt-1">{u.email}</Text>
+                    {u.consentimento_biometria && (
+                      <Text className="text-purple-600 text-xs mt-1">✓ Biometria autorizada</Text>
+                    )}
                   </View>
                   <View className={`${roleCor.cor} rounded-full px-3 py-1`}>
                     <Text className={`${roleCor.corTexto} text-xs font-semibold`}>
@@ -121,7 +127,7 @@ export default function AdminUtilizadoresScreen() {
       </View>
 
       <Modal visible={modalVisivel} animationType="slide" transparent>
-        <View className="flex-1 bg-black/40 justify-end">
+        <ScrollView className="flex-1 bg-black/40" contentContainerStyle={{ flexGrow: 1, justifyContent: "flex-end" }}>
           <View className="bg-white rounded-t-2xl p-6">
             <Text className="text-xl font-bold text-slate-900 mb-1">
               {editando?.nome || editando?.email}
@@ -177,7 +183,26 @@ export default function AdminUtilizadoresScreen() {
               </>
             )}
 
-            <View className="mt-4" />
+            {roleSelecionado === "encarregado" && (
+              <View className="flex-row items-center justify-between mb-6 bg-gray-50 rounded-lg p-3 mt-2">
+                <View className="flex-1 pr-3">
+                  <Text className="text-sm font-medium text-slate-900">Consentimento de Biometria</Text>
+                  <Text className="text-xs text-gray-500 mt-1">
+                    Autoriza o uso do rosto do(s) educando(s) para chamada automática
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => setConsentimentoBiometria(!consentimentoBiometria)}
+                  className={`w-12 h-7 rounded-full justify-center px-1 ${
+                    consentimentoBiometria ? "bg-emerald-600 items-end" : "bg-gray-300 items-start"
+                  }`}
+                >
+                  <View className="w-5 h-5 bg-white rounded-full" />
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View className="mt-2" />
 
             <TouchableOpacity
               onPress={guardar}
@@ -192,10 +217,10 @@ export default function AdminUtilizadoresScreen() {
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setModalVisivel(false)}>
-              <Text className="text-center text-gray-500 py-2">Cancelar</Text>
+              <Text className="text-center text-gray-500 py-2 mb-4">Cancelar</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </ScrollView>
       </Modal>
     </ScrollView>
   );
