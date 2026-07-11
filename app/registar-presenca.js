@@ -3,6 +3,8 @@ import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "rea
 import { useRouter } from "expo-router";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
+import { Alert } from "react-native";
+
 
 export default function RegistarPresencaScreen() {
   const router = useRouter();
@@ -16,6 +18,18 @@ export default function RegistarPresencaScreen() {
     });
     return unsubscribe;
   }, []);
+
+  const escolherTipoDeChamada = (turmaId) => {
+  Alert.alert(
+    "Tipo de Chamada",
+    "Como queres registar a presença desta turma?",
+    [
+      { text: "📸 Facial", onPress: () => router.push(`/chamada-facial/${turmaId}`) },
+      { text: "✍️ Manual", onPress: () => router.push(`/chamada/${turmaId}`) },
+      { text: "Cancelar", style: "cancel" },
+    ]
+  );
+};
 
   return (
     <ScrollView className="flex-1 bg-gray-50">
@@ -39,7 +53,7 @@ export default function RegistarPresencaScreen() {
         {turmas.map((turma) => (
           <TouchableOpacity
             key={turma.id}
-            onPress={() => router.push(`/chamada/${turma.id}`)}
+            onPress={() => escolherTipoDeChamada(turma.id)}
             className="bg-white rounded-xl p-4 border border-gray-200 flex-row justify-between items-center"
           >
             <View>
