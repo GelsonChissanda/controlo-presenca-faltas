@@ -7,23 +7,17 @@ import { db } from "../../firebaseConfig";
 import { reconhecerRosto } from "../../utils/reconhecerRosto";
 import { useAuth } from "../../context/AuthContext";
 
-const INTERVALO_CAPTURA_MS = 2500; // tempo entre tentativas de reconhecimento
-
 export default function ChamadaFacialScreen() {
   const router = useRouter();
   const { turmaId } = useLocalSearchParams();
   const { user } = useAuth();
   const [permissao, pedirPermissao] = useCameraPermissions();
   const cameraRef = useRef(null);
-  const [ativo, setAtivo] = useState(true);
   const [ultimoResultado, setUltimoResultado] = useState(null);
   const [alunosDaTurma, setAlunosDaTurma] = useState([]);
   const [presentesHoje, setPresentesHoje] = useState(new Set());
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState(false);
-  const [contadorTentativas, setContadorTentativas] = useState(0);
-  const intervaloRef = useRef(null);
-  const processandoRef = useRef(false);
 
   useEffect(() => {
     const carregar = async () => {
@@ -44,29 +38,27 @@ export default function ChamadaFacialScreen() {
     carregar();
   }, [turmaId]);
 
-  useEffect(() => {
-    if (!permissao?.granted || carregando) return;
-
-    intervaloRef.current = setInterval(() => {
-      if (ativo) tentarReconhecer();
-    }, INTERVALO_CAPTURA_MS);
-
-    return () => clearInterval(intervaloRef.current);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [permissao?.granted, carregando, ativo, alunosDaTurma, presentesHoje]);
-
   const tentarReconhecer = async () => {
-    if (!cameraRef.current || processandoRef.current) return;
-    processandoRef.current = true;
+    if (!cameraRef.current || processando) return;
     setProcessando(true);
-    setContadorTentativas((n) => n + 1);
 
     try {
       const foto = await cameraRef.current.takePictureAsync({ base64: true, quality: 0.5 });
       const resultado = await reconhecerRosto(foto.base64);
 
-      if (!resultado) {
-        setUltimoResultado({ tipo: "nao_reconhecido", texto: "🔍 Nenhum rosto reconhecido. Aproxima-te mais." });
+      if (resultado.facesetVazio) {
+        setUltimoResultado({
+          tipo: "erro",
+          texto: "❌ O FaceSet está vazio ou nenhum rosto foi encontrado. Confirma o registo dos rostos.",
+        });
+        return;
+      }
+
+      if (!resultado.reconhecido) {
+        setUltimoResultado({
+          tipo: "nao_reconhecido",
+          texto: `🔍 Não reconhecido (confiança: ${resultado.confianca.toFixed(1)}%). Tenta de novo com boa luz.`,
+        });
         return;
       }
 
@@ -75,7 +67,7 @@ export default function ChamadaFacialScreen() {
       if (!aluno) {
         setUltimoResultado({
           tipo: "nao_reconhecido",
-          texto: `🔍 Rosto reconhecido (${resultado.confianca}%), mas não pertence a esta turma.`,
+          texto: `🔍 Rosto reconhecido (${resultado.confianca.toFixed(1)}%), mas não pertence a esta turma.`,
         });
         return;
       }
@@ -99,12 +91,11 @@ export default function ChamadaFacialScreen() {
       setPresentesHoje((prev) => new Set(prev).add(aluno.id));
       setUltimoResultado({
         tipo: "sucesso",
-        texto: `✅ ${aluno.nome} — Presença marcada! (${resultado.confianca}%)`,
+        texto: `✅ ${aluno.nome} — Presença marcada! (${resultado.confianca.toFixed(1)}%)`,
       });
     } catch (error) {
       setUltimoResultado({ tipo: "erro", texto: `❌ Erro: ${error.message}` });
     } finally {
-      processandoRef.current = false;
       setProcessando(false);
     }
   };
@@ -146,18 +137,11 @@ export default function ChamadaFacialScreen() {
         </TouchableOpacity>
         <Text className="text-white text-xl font-bold">Chamada Automática</Text>
         <Text className="text-gray-300 mt-1">
-          {presentesHoje.size} de {alunosDaTurma.length} alunos marcados · {contadorTentativas} tentativas
+          {presentesHoje.size} de {alunosDaTurma.length} alunos marcados
         </Text>
       </View>
 
       <CameraView ref={cameraRef} style={{ flex: 1 }} facing="front" />
-
-      {processando && (
-        <View className="absolute top-24 self-center bg-black/70 rounded-full px-4 py-2 flex-row items-center" style={{ gap: 8 }}>
-          <ActivityIndicator size="small" color="#fff" />
-          <Text className="text-white text-xs">A analisar rosto...</Text>
-        </View>
-      )}
 
       {ultimoResultado && (
         <View className={`${corResultado[ultimoResultado.tipo]} px-6 py-4`}>
@@ -169,8 +153,23 @@ export default function ChamadaFacialScreen() {
 
       <View className="bg-slate-900 px-6 py-6">
         <Text className="text-gray-300 text-center text-sm mb-4">
-          Coloca o rosto em frente à câmara. A presença é marcada automaticamente.
+          Coloca o rosto do aluno em frente à câmara e clica no botão.
         </Text>
+
+        <TouchableOpacity
+          onPress={tentarReconhecer}
+          disabled={processando}
+          className="bg-emerald-600 rounded-lg py-4 mb-3"
+        >
+          {processando ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text className="text-white text-center font-semibold text-base">
+              📸 Reconhecer Aluno
+            </Text>
+          )}
+        </TouchableOpacity>
+
         <TouchableOpacity onPress={() => router.back()} className="bg-white rounded-lg py-4">
           <Text className="text-slate-900 text-center font-semibold text-base">
             Terminar Chamada
