@@ -22,7 +22,7 @@ export default function ChamadaFacialScreen() {
   const [processando, setProcessando] = useState(false);
 
   // controla o cartão central: null = escondido
-  // { tipo: "sucesso", aluno, confianca } ou { tipo: "erro", mensagem }
+  // { tipo: "sucesso", aluno, confianca } | { tipo: "erro", mensagem } | { tipo: "ja_marcado", aluno }
   const [cartaoAtivo, setCartaoAtivo] = useState(null);
 
   const { tocarSucesso, tocarErro } = useSomConfirmacao();
@@ -91,6 +91,8 @@ export default function ChamadaFacialScreen() {
       }
 
       if (presentesHoje.has(aluno.id)) {
+        // já marcado nesta sessão — mostra o cartão da prancheta + polegar, sem novo registo
+        setCartaoAtivo({ tipo: "ja_marcado", aluno });
         setUltimoResultado({ tipo: "ja_marcado", texto: `ℹ️ ${aluno.nome} já estava marcado` });
         return;
       }
@@ -108,7 +110,6 @@ export default function ChamadaFacialScreen() {
 
       setPresentesHoje((prev) => new Set(prev).add(aluno.id));
 
-      // dispara o som e mostra o cartão central verde de sucesso
       tocarSucesso();
       setCartaoAtivo({ tipo: "sucesso", aluno, confianca: resultado.confianca });
 
@@ -152,12 +153,11 @@ export default function ChamadaFacialScreen() {
     aviso: "bg-amber-600",
   };
 
-  // a barra de texto simples só aparece para os casos que NÃO têm cartão central
-  // (sucesso e nao_reconhecido já têm o cartão central a cobrir isso)
+  // a barra de texto simples só aparece para os casos que NÃO têm cartão central próprio
+  // (sucesso, nao_reconhecido e ja_marcado já têm cartão central dedicado)
+  const casosComCartao = ["sucesso", "nao_reconhecido", "ja_marcado"];
   const mostrarBarraTexto =
-    ultimoResultado &&
-    ultimoResultado.tipo !== "sucesso" &&
-    ultimoResultado.tipo !== "nao_reconhecido";
+    ultimoResultado && !casosComCartao.includes(ultimoResultado.tipo);
 
   return (
     <View className="flex-1 bg-black">
@@ -174,7 +174,7 @@ export default function ChamadaFacialScreen() {
       <View style={{ flex: 1 }}>
         <CameraView ref={cameraRef} style={{ flex: 1 }} facing="front" />
 
-        {/* cartão central — sucesso (✓ verde) ou não-reconhecido (✕ vermelho) */}
+        {/* cartão central — sucesso (✓ verde) | não-reconhecido (✕ vermelho) | já marcado (prancheta + 👍) */}
         {cartaoAtivo && (
           <ReconhecimentoOverlay
             tipo={cartaoAtivo.tipo}
@@ -186,7 +186,7 @@ export default function ChamadaFacialScreen() {
         )}
       </View>
 
-      {/* barra de texto só para os outros casos: erro técnico, já marcado, aviso */}
+      {/* barra de texto só para casos técnicos: erro de rede, aviso de faceset vazio */}
       {mostrarBarraTexto && (
         <View className={`${corResultado[ultimoResultado.tipo]} px-6 py-4`}>
           <Text className="text-white text-center font-semibold text-base">
