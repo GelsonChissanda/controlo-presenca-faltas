@@ -5,6 +5,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { doc, updateDoc, getDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { registarRostoDoAluno } from "../../utils/registarRosto";
+import { uploadFotoAluno } from "../../utils/uploadFoto";
 
 export default function RegistarRostoScreen() {
   const router = useRouter();
@@ -51,13 +52,27 @@ export default function RegistarRostoScreen() {
         quality: 0.7,
       });
 
+      // 1. Regista o rosto no Face++ (deteção + adição ao FaceSet)
       const faceToken = await registarRostoDoAluno(foto.base64);
 
-      await updateDoc(doc(db, "alunos", alunoId), {
-        face_token: faceToken,
-      });
+      // 2. Reaproveita a mesma foto como foto de perfil (upload para o Storage)
+      let fotoUrl = null;
+      try {
+        fotoUrl = await uploadFotoAluno(alunoId, foto.base64);
+      } catch (erroUpload) {
+        console.log("Rosto registado, mas falhou o upload da foto de perfil:", erroUpload);
+      }
 
-      Alert.alert("Sucesso", `Rosto de ${nomeAluno || "aluno"} registado com sucesso!`, [
+      const dadosParaAtualizar = { face_token: faceToken };
+      if (fotoUrl) dadosParaAtualizar.foto_url = fotoUrl;
+
+      await updateDoc(doc(db, "alunos", alunoId), dadosParaAtualizar);
+
+      const mensagem = fotoUrl
+        ? `Rosto de ${nomeAluno || "aluno"} registado e foto de perfil atualizada!`
+        : `Rosto de ${nomeAluno || "aluno"} registado! (a foto de perfil não foi guardada — tenta editar o aluno para adicionar uma foto manualmente)`;
+
+      Alert.alert("Sucesso", mensagem, [
         { text: "OK", onPress: () => router.back() },
       ]);
     } catch (error) {
