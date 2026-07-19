@@ -6,6 +6,8 @@ import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { reconhecerRosto } from "../../utils/reconhecerRosto";
 import { useAuth } from "../../context/AuthContext";
+import { useSomConfirmacao } from "../../utils/usarSomConfirmacao";
+import ReconhecimentoOverlay from "../../components/ReconhecimentoOverlay";
 
 export default function ChamadaFacialScreen() {
   const router = useRouter();
@@ -18,6 +20,12 @@ export default function ChamadaFacialScreen() {
   const [presentesHoje, setPresentesHoje] = useState(new Set());
   const [carregando, setCarregando] = useState(true);
   const [processando, setProcessando] = useState(false);
+
+  // controla o cartão central: null = escondido
+  // { tipo: "sucesso", aluno, confianca } ou { tipo: "erro", mensagem }
+  const [cartaoAtivo, setCartaoAtivo] = useState(null);
+
+  const { tocarSucesso, tocarErro } = useSomConfirmacao();
 
   useEffect(() => {
     const carregar = async () => {
@@ -55,6 +63,11 @@ export default function ChamadaFacialScreen() {
       }
 
       if (!resultado.reconhecido) {
+        tocarErro();
+        setCartaoAtivo({
+          tipo: "erro",
+          mensagem: `Confiança: ${resultado.confianca.toFixed(1)}%. Tenta de novo com boa luz.`,
+        });
         setUltimoResultado({
           tipo: "nao_reconhecido",
           texto: `🔍 Não reconhecido (confiança: ${resultado.confianca.toFixed(1)}%). Tenta de novo com boa luz.`,
@@ -65,6 +78,11 @@ export default function ChamadaFacialScreen() {
       const aluno = alunosDaTurma.find((a) => a.face_token === resultado.faceToken);
 
       if (!aluno) {
+        tocarErro();
+        setCartaoAtivo({
+          tipo: "erro",
+          mensagem: "Rosto reconhecido, mas não pertence a esta turma.",
+        });
         setUltimoResultado({
           tipo: "nao_reconhecido",
           texto: `🔍 Rosto reconhecido (${resultado.confianca.toFixed(1)}%), mas não pertence a esta turma.`,
@@ -89,6 +107,11 @@ export default function ChamadaFacialScreen() {
       });
 
       setPresentesHoje((prev) => new Set(prev).add(aluno.id));
+
+      // dispara o som e mostra o cartão central verde de sucesso
+      tocarSucesso();
+      setCartaoAtivo({ tipo: "sucesso", aluno, confianca: resultado.confianca });
+
       setUltimoResultado({
         tipo: "sucesso",
         texto: `✅ ${aluno.nome} — Presença marcada! (${resultado.confianca.toFixed(1)}%)`,
@@ -129,6 +152,13 @@ export default function ChamadaFacialScreen() {
     aviso: "bg-amber-600",
   };
 
+  // a barra de texto simples só aparece para os casos que NÃO têm cartão central
+  // (sucesso e nao_reconhecido já têm o cartão central a cobrir isso)
+  const mostrarBarraTexto =
+    ultimoResultado &&
+    ultimoResultado.tipo !== "sucesso" &&
+    ultimoResultado.tipo !== "nao_reconhecido";
+
   return (
     <View className="flex-1 bg-black">
       <View className="bg-slate-900 pt-14 pb-4 px-6">
@@ -141,9 +171,23 @@ export default function ChamadaFacialScreen() {
         </Text>
       </View>
 
-      <CameraView ref={cameraRef} style={{ flex: 1 }} facing="front" />
+      <View style={{ flex: 1 }}>
+        <CameraView ref={cameraRef} style={{ flex: 1 }} facing="front" />
 
-      {ultimoResultado && (
+        {/* cartão central — sucesso (✓ verde) ou não-reconhecido (✕ vermelho) */}
+        {cartaoAtivo && (
+          <ReconhecimentoOverlay
+            tipo={cartaoAtivo.tipo}
+            aluno={cartaoAtivo.aluno}
+            confianca={cartaoAtivo.confianca}
+            mensagemErro={cartaoAtivo.mensagem}
+            onFim={() => setCartaoAtivo(null)}
+          />
+        )}
+      </View>
+
+      {/* barra de texto só para os outros casos: erro técnico, já marcado, aviso */}
+      {mostrarBarraTexto && (
         <View className={`${corResultado[ultimoResultado.tipo]} px-6 py-4`}>
           <Text className="text-white text-center font-semibold text-base">
             {ultimoResultado.texto}
