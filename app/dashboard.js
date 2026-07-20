@@ -1,5 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Animated } from "react-native";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  ActivityIndicator,
+  Animated,
+  useWindowDimensions,
+} from "react-native";
 import { useRouter } from "expo-router";
 import { signOut } from "firebase/auth";
 import { collection, query, where, onSnapshot, getDocs, orderBy, limit } from "firebase/firestore";
@@ -22,6 +30,10 @@ import {
   CheckCircle2,
   ChevronRight,
   PieChart,
+  LayoutDashboard,
+  Users,
+  BookOpen,
+  UserCog,
 } from "lucide-react-native";
 
 const ROLE_LABEL = {
@@ -29,6 +41,10 @@ const ROLE_LABEL = {
   professor: "Professor",
   encarregado: "Encarregado de Educação",
 };
+
+// A partir desta largura (em pontos), o admin passa a ver o layout "desktop" com sidebar.
+// Ajusta este número se quiseres que o novo visual apareça mais cedo/tarde.
+const LARGURA_DESKTOP = 900;
 
 const PALETA = {
   dark: {
@@ -49,6 +65,15 @@ const PALETA = {
     destaqueBg: "#0F172A",
     destaqueTexto: "#FFFFFF",
   },
+};
+
+// Mesmas cores de sempre da app — só com uma variante "escura" para os cartões
+// sólidos do layout desktop (mantém a identidade de cor, muda só o estilo do bloco).
+const CORES_KPI = {
+  turmas: { base: "#22D3EE", escuro: "#0E7490" },
+  alunos: { base: "#818CF8", escuro: "#3730A3" },
+  faltas: { base: "#F87171", escuro: "#991B1B" },
+  chamadas: { base: "#FBBF24", escuro: "#92400E" },
 };
 
 function seteDiasAtras() {
@@ -134,6 +159,89 @@ function KpiCard({ Icon, label, valor, cor, atraso = 0, onPress, cores }) {
         </View>
       </TouchableOpacity>
     </Animated.View>
+  );
+}
+
+// Cartão de KPI "sólido", usado só no layout desktop do admin (estilo do painel de referência).
+function KpiCardDesktop({ Icon, label, valor, corFundo, atraso = 0, onPress }) {
+  const opacidade = useRef(new Animated.Value(0)).current;
+  const deslocamento = useRef(new Animated.Value(14)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(opacidade, { toValue: 1, duration: 500, delay: atraso, useNativeDriver: true }),
+      Animated.timing(deslocamento, { toValue: 0, duration: 500, delay: atraso, useNativeDriver: true }),
+    ]).start();
+  }, []);
+
+  return (
+    <Animated.View style={{ flex: 1, opacity: opacidade, transform: [{ translateY: deslocamento }] }}>
+      <TouchableOpacity activeOpacity={0.9} onPress={onPress} disabled={!onPress}>
+        <View style={{ backgroundColor: corFundo, borderRadius: 16, padding: 20, minHeight: 118, justifyContent: "space-between" }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
+            <Text style={{ color: "#FFFFFFCC", fontSize: 11.5, fontWeight: "700", letterSpacing: 0.4, textTransform: "uppercase", flex: 1 }}>
+              {label}
+            </Text>
+            <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: "#FFFFFF26", alignItems: "center", justifyContent: "center" }}>
+              <Icon size={17} color="#FFFFFF" strokeWidth={2.2} />
+            </View>
+          </View>
+          <AnimatedNumber value={valor} style={{ color: "#FFFFFF", fontSize: 30, fontWeight: "800", marginTop: 12 }} />
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// Item de navegação da sidebar (layout desktop do admin).
+function ItemSidebar({ Icon, label, ativo = false, badge, onPress, cores }) {
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        paddingVertical: 10,
+        paddingHorizontal: 10,
+        borderRadius: 10,
+        backgroundColor: ativo ? `${cores.destaqueBg}1A` : "transparent",
+        marginBottom: 2,
+      }}
+    >
+      <Icon size={17} color={ativo ? cores.destaqueBg : cores.textoSecundario} strokeWidth={2.2} />
+      <Text style={{ flex: 1, color: ativo ? cores.texto : cores.textoSecundario, fontSize: 13.5, fontWeight: ativo ? "700" : "500" }}>
+        {label}
+      </Text>
+      {!!badge && badge > 0 && (
+        <View style={{ backgroundColor: "#F87171", borderRadius: 999, minWidth: 18, height: 18, alignItems: "center", justifyContent: "center", paddingHorizontal: 4 }}>
+          <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}>{badge}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+// Título de secção da sidebar (ex: "GERAL", "OPERAÇÕES").
+function SecaoSidebar({ titulo, children, cores }) {
+  return (
+    <View style={{ marginBottom: 22 }}>
+      <Text
+        style={{
+          color: cores.textoSecundario,
+          fontSize: 10.5,
+          fontWeight: "700",
+          letterSpacing: 0.8,
+          textTransform: "uppercase",
+          marginBottom: 8,
+          paddingHorizontal: 10,
+        }}
+      >
+        {titulo}
+      </Text>
+      {children}
+    </View>
   );
 }
 
@@ -242,6 +350,8 @@ export default function DashboardScreen() {
   const { user, userData, loading } = useAuth();
   const { theme } = useTheme();
   const cores = PALETA[theme] || PALETA.dark;
+  const { width } = useWindowDimensions();
+  const ehDesktop = width >= LARGURA_DESKTOP;
 
   const [totalAlunos, setTotalAlunos] = useState(0);
   const [totalTurmas, setTotalTurmas] = useState(0);
@@ -416,7 +526,117 @@ export default function DashboardScreen() {
   }
 
   const role = userData?.role;
+  const mostrarLayoutDesktopAdmin = ehDesktop && role === "admin";
 
+  // ---------- LAYOUT DESKTOP (só admin + ecrã grande) ----------
+  if (mostrarLayoutDesktopAdmin) {
+    return (
+      <View style={{ flex: 1, flexDirection: "row", backgroundColor: cores.fundo }}>
+        {/* Sidebar */}
+        <View style={{ width: 260, backgroundColor: cores.cartao, borderRightWidth: 1, borderRightColor: cores.borda, paddingTop: 24 }}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 8, marginBottom: 28 }}>
+              <View style={{ width: 38, height: 38, borderRadius: 10, backgroundColor: cores.destaqueBg, alignItems: "center", justifyContent: "center" }}>
+                <School size={19} color={cores.destaqueTexto} strokeWidth={2.4} />
+              </View>
+              <View>
+                <Text style={{ color: cores.texto, fontWeight: "800", fontSize: 14 }}>Controlo Presença</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>Painel de Administração</Text>
+              </View>
+            </View>
+
+            <SecaoSidebar titulo="Geral" cores={cores}>
+              <ItemSidebar Icon={LayoutDashboard} label="Dashboard" ativo cores={cores} onPress={() => {}} />
+              <ItemSidebar Icon={Bell} label="Notificações" badge={notificacoesNaoLidas} cores={cores} onPress={() => router.push("/notificacoes")} />
+            </SecaoSidebar>
+
+            <SecaoSidebar titulo="Operações" cores={cores}>
+              <ItemSidebar Icon={School} label="Turmas e Alunos" cores={cores} onPress={() => router.push("/turmas")} />
+              <ItemSidebar Icon={CheckCircle2} label="Registar Presença" cores={cores} onPress={() => router.push("/registar-presenca")} />
+              <ItemSidebar Icon={AlertTriangle} label="Chamadas de Atenção" cores={cores} onPress={() => router.push("/chamadas-atencao")} />
+              <ItemSidebar Icon={CalendarDays} label="Reuniões" cores={cores} onPress={() => router.push("/reunioes")} />
+            </SecaoSidebar>
+
+            <SecaoSidebar titulo="Administração" cores={cores}>
+              <ItemSidebar Icon={Settings} label="Painel Admin" cores={cores} onPress={() => router.push("/admin")} />
+              <ItemSidebar Icon={Users} label="Alunos" cores={cores} onPress={() => router.push("/admin/alunos")} />
+              <ItemSidebar Icon={BookOpen} label="Professores" cores={cores} onPress={() => router.push("/admin/professores")} />
+              <ItemSidebar Icon={UserCog} label="Utilizadores" cores={cores} onPress={() => router.push("/admin/utilizadores")} />
+            </SecaoSidebar>
+          </ScrollView>
+
+          {/* Rodapé da sidebar: utilizador autenticado */}
+          <View style={{ paddingHorizontal: 16, paddingVertical: 16, borderTopWidth: 1, borderTopColor: cores.borda }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 12 }}>
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: cores.borda, alignItems: "center", justifyContent: "center" }}>
+                <Text style={{ color: cores.texto, fontWeight: "800", fontSize: 12 }}>{iniciaisDoNome(userData?.nome || user.email)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={{ color: cores.texto, fontWeight: "700", fontSize: 13 }}>{userData?.nome || user.email}</Text>
+                <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>{ROLE_LABEL[role]}</Text>
+              </View>
+              <ThemeToggle />
+            </View>
+            <TouchableOpacity onPress={terminarSessao} style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 }}>
+              <LogOut size={15} color={cores.textoSecundario} />
+              <Text style={{ color: cores.textoSecundario, fontSize: 13 }}>Terminar sessão</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* Conteúdo principal */}
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 32, maxWidth: 1280, width: "100%", alignSelf: "center" }}>
+          <View style={{ marginBottom: 28 }}>
+            <Text style={{ color: cores.textoSecundario, fontSize: 12, marginBottom: 4, textTransform: "uppercase", letterSpacing: 0.5 }}>
+              {new Date().toLocaleDateString("pt-PT", { weekday: "long", day: "2-digit", month: "long", year: "numeric" })}
+            </Text>
+            <Text style={{ color: cores.texto, fontSize: 26, fontWeight: "800" }}>Painel de Gestão Escolar</Text>
+            <Text style={{ color: cores.textoSecundario, fontSize: 13, marginTop: 4 }}>
+              Monitorização em tempo real de turmas, presenças e chamadas de atenção.
+            </Text>
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 16, marginBottom: 20 }}>
+            <KpiCardDesktop Icon={School} label="Turmas" valor={totalTurmas} corFundo={CORES_KPI.turmas.escuro} atraso={0} onPress={() => router.push("/turmas")} />
+            <KpiCardDesktop Icon={GraduationCap} label="Alunos" valor={totalAlunos} corFundo={CORES_KPI.alunos.escuro} atraso={80} onPress={() => router.push("/turmas")} />
+            <KpiCardDesktop Icon={ClipboardList} label="Faltas hoje" valor={faltasHoje} corFundo={CORES_KPI.faltas.escuro} atraso={160} onPress={() => router.push("/registar-presenca")} />
+            <KpiCardDesktop Icon={AlertTriangle} label="Chamadas (mês)" valor={chamadasMes} corFundo={CORES_KPI.chamadas.escuro} atraso={240} onPress={() => router.push("/chamadas-atencao")} />
+          </View>
+
+          <View style={{ flexDirection: "row", gap: 16 }}>
+            <View style={{ flex: 2, backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 20 }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                  <ClipboardList size={16} color="#F87171" />
+                  <Text style={{ color: cores.texto, fontWeight: "700", fontSize: 15 }}>Faltas nos últimos dias</Text>
+                </View>
+                <TouchableOpacity onPress={() => router.push("/chamadas-atencao")} style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                  <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>5 dias úteis</Text>
+                  <ChevronRight size={16} color={cores.textoSecundario} />
+                </TouchableOpacity>
+              </View>
+              <AreaChart data={graficoFaltas} color="#F87171" height={220} />
+            </View>
+
+            <View style={{ flex: 1, backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 20, alignItems: "center", justifyContent: "center" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", marginBottom: 20 }}>
+                <PieChart size={16} color="#34D399" />
+                <Text style={{ color: cores.texto, fontWeight: "700", fontSize: 15 }}>Assiduidade Geral</Text>
+              </View>
+              <DonutChart percentagem={assiduidade} cor="#34D399" legenda="Presença" tamanho={160} espessura={16} />
+              <Text style={{ color: cores.textoSecundario, fontSize: 12, textAlign: "center", marginTop: 16 }}>
+                Percentagem de presenças confirmadas em todas as turmas, nos últimos dias úteis.
+              </Text>
+            </View>
+          </View>
+
+          <View style={{ height: 40 }} />
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // ---------- LAYOUT ATUAL (telemóvel, ou professor/encarregado em qualquer largura) ----------
   return (
     <ScrollView style={{ flex: 1, backgroundColor: cores.fundo }}>
       <View className="pt-14 pb-6 px-6">
