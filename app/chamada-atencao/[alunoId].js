@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
+import { notificarChamadaAtencao } from "../../utils/criarNotificacoes";
 
 const GRAVIDADES = [
   { key: "leve", label: "Leve", cor: "bg-amber-500" },
@@ -16,10 +17,18 @@ export default function NovaChamadaAtencaoScreen() {
   const { alunoId } = useLocalSearchParams();
   const { user } = useAuth();
 
+  const [aluno, setAluno] = useState(null);
   const [motivo, setMotivo] = useState("");
   const [gravidade, setGravidade] = useState("leve");
   const [descricao, setDescricao] = useState("");
   const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const snap = await getDoc(doc(db, "alunos", alunoId));
+      if (snap.exists()) setAluno({ id: snap.id, ...snap.data() });
+    })();
+  }, [alunoId]);
 
   const guardar = async () => {
     if (!motivo || !descricao) {
@@ -29,7 +38,7 @@ export default function NovaChamadaAtencaoScreen() {
 
     setSalvando(true);
     try {
-      await addDoc(collection(db, "chamadas_atencao"), {
+      const docRef = await addDoc(collection(db, "chamadas_atencao"), {
         aluno_id: alunoId,
         motivo,
         gravidade,
@@ -39,6 +48,18 @@ export default function NovaChamadaAtencaoScreen() {
         encarregado_notificado: false,
         criado_em: new Date(),
       });
+
+      // notifica os encarregados; se falhar, a chamada de atenção já está
+      // guardada na mesma — só o "encarregado_notificado" fica false
+      if (aluno) {
+        try {
+          await notificarChamadaAtencao(aluno, gravidade, motivo, docRef.id);
+          await updateDoc(docRef, { encarregado_notificado: true });
+        } catch (erroNotificacao) {
+          console.log("Chamada de atenção guardada, mas falhou notificar encarregados:", erroNotificacao);
+        }
+      }
+
       Alert.alert("Sucesso", "Chamada de atenção registada!");
       router.back();
     } catch (error) {
@@ -56,7 +77,7 @@ export default function NovaChamadaAtencaoScreen() {
           <Text className="text-gray-300">‹ Voltar</Text>
         </TouchableOpacity>
         <Text className="text-white text-2xl font-bold">Chamada de Atenção</Text>
-        <Text className="text-gray-300 mt-1">Aluno ID: {alunoId}</Text>
+        <Text className="text-gray-300 mt-1">{aluno?.nome || "A carregar..."}</Text>
       </View>
 
       <View className="px-6 pt-6">
