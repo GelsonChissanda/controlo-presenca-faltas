@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from "react-native";
 import { useRouter } from "expo-router";
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 import { useAuth } from "../context/AuthContext";
 
@@ -50,13 +50,8 @@ export default function NotificacoesScreen() {
     return unsubscribe;
   }, [user?.uid]);
 
-  const marcarComoLida = async (notificacao) => {
-    if (notificacao.lida) return;
-    try {
-      await updateDoc(doc(db, "notificacoes", notificacao.id), { lida: true });
-    } catch (erro) {
-      console.log("Erro ao marcar notificação como lida:", erro);
-    }
+  const abrirNotificacao = (notificacao) => {
+    router.push(`/notificacao/${notificacao.id}`);
   };
 
   const naoLidas = notificacoes.filter((n) => !n.lida).length;
@@ -90,7 +85,7 @@ export default function NotificacoesScreen() {
           return (
             <TouchableOpacity
               key={notificacao.id}
-              onPress={() => marcarComoLida(notificacao)}
+              onPress={() => abrirNotificacao(notificacao)}
               activeOpacity={0.7}
               className={`rounded-xl p-4 border-l-4 ${config.cor} ${
                 notificacao.lida ? "bg-white" : config.corFundo
