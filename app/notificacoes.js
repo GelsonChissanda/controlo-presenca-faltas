@@ -8,6 +8,7 @@ import { useAuth } from "../context/AuthContext";
 const CONFIG_TIPO = {
   falta: { emoji: "❌", cor: "border-l-red-500", corFundo: "bg-red-50" },
   atraso: { emoji: "⏰", cor: "border-l-amber-500", corFundo: "bg-amber-50" },
+  presenca: { emoji: "✅", cor: "border-l-emerald-500", corFundo: "bg-emerald-50" },
   chamada_atencao: { emoji: "⚠️", cor: "border-l-orange-500", corFundo: "bg-orange-50" },
   reuniao: { emoji: "📅", cor: "border-l-blue-500", corFundo: "bg-blue-50" },
 };

@@ -7,6 +7,7 @@ import { db } from "../../firebaseConfig";
 const CONFIG_TIPO = {
   falta: { emoji: "❌", cor: "#EF4444", label: "Falta" },
   atraso: { emoji: "⏰", cor: "#F59E0B", label: "Atraso" },
+  presenca: { emoji: "✅", cor: "#10B981", label: "Presença" },
   chamada_atencao: { emoji: "⚠️", cor: "#F97316", label: "Chamada de Atenção" },
   reuniao: { emoji: "📅", cor: "#3B82F6", label: "Reunião" },
 };
