@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Animated,
+  Image,
   useWindowDimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -245,6 +246,63 @@ function SecaoSidebar({ titulo, children, cores }) {
   );
 }
 
+function AlunoFaltaHojeItem({ aluno, cores }) {
+  const possuiFoto = Boolean(aluno.foto_url);
+
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingVertical: 10,
+        borderBottomWidth: 1,
+        borderBottomColor: cores.borda,
+        gap: 12,
+      }}
+    >
+      <View
+        style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          overflow: "hidden",
+          backgroundColor: cores.borda,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        {possuiFoto ? (
+          <Image source={{ uri: aluno.foto_url }} style={{ width: 44, height: 44 }} resizeMode="cover" />
+        ) : (
+          <Text style={{ color: cores.texto, fontWeight: "800", fontSize: 14 }}>{iniciaisDoNome(aluno.nome)}</Text>
+        )}
+      </View>
+
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: cores.texto, fontWeight: "700", fontSize: 14 }} numberOfLines={1}>
+          {aluno.nome}
+        </Text>
+        <Text style={{ color: cores.textoSecundario, fontSize: 12, marginTop: 2 }} numberOfLines={1}>
+          {aluno.turmaNome || "Sem turma"}
+        </Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: aluno.faltasHoje > 0 ? "#F8717122" : cores.borda,
+          borderRadius: 999,
+          paddingHorizontal: 10,
+          paddingVertical: 4,
+        }}
+      >
+        <Text style={{ color: aluno.faltasHoje > 0 ? "#F87171" : cores.textoSecundario, fontWeight: "700", fontSize: 12 }}>
+          {aluno.faltasHoje} {aluno.faltasHoje === 1 ? "falta" : "faltas"}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 function CartaoEducando({ educando, atraso = 0, onPress, cores }) {
   const opacidade = useRef(new Animated.Value(0)).current;
   const deslocamento = useRef(new Animated.Value(14)).current;
@@ -362,6 +420,7 @@ export default function DashboardScreen() {
   const [graficoFaltas, setGraficoFaltas] = useState([]);
   const [educandosDetalhados, setEducandosDetalhados] = useState([]);
   const [carregandoEducandos, setCarregandoEducandos] = useState(true);
+  const [alunosComFaltasHoje, setAlunosComFaltasHoje] = useState([]);
 
   useEffect(() => {
     if (!loading && !user) router.replace("/");
@@ -403,6 +462,62 @@ export default function DashboardScreen() {
       unsubSemana();
       unsubChamadas();
     };
+  }, [user, userData]);
+
+  useEffect(() => {
+    if (!user || userData?.role !== "admin") {
+      setAlunosComFaltasHoje([]);
+      return;
+    }
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    const unsubAlunos = onSnapshot(collection(db, "alunos"), async (snapAlunos) => {
+      const alunos = snapAlunos.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+      try {
+        const presencasSnap = await getDocs(query(collection(db, "presencas"), where("data", ">=", hoje)));
+        const presencasHoje = presencasSnap.docs
+          .map((d) => d.data())
+          .filter((p) => {
+            const data = p.data?.toDate ? p.data.toDate() : null;
+            return data && data >= hoje;
+          });
+
+        const faltasPorAluno = presencasHoje.reduce((acc, presenca) => {
+          if (presenca.aluno_id && (presenca.estado === "falta" || presenca.estado === "atraso")) {
+            acc[presenca.aluno_id] = (acc[presenca.aluno_id] || 0) + 1;
+          }
+          return acc;
+        }, {});
+
+        let turmasMap = {};
+        try {
+          const turmasSnap = await getDocs(collection(db, "turmas"));
+          turmasSnap.docs.forEach((t) => (turmasMap[t.id] = t.data().nome));
+        } catch (erro) {
+          console.log("Erro ao carregar turmas para a lista de faltas:", erro.message);
+        }
+
+        const lista = alunos
+          .map((aluno) => ({
+            id: aluno.id,
+            nome: aluno.nome,
+            foto_url: aluno.foto_url,
+            turmaNome: turmasMap[aluno.turma_id] || "Sem turma",
+            faltasHoje: faltasPorAluno[aluno.id] || 0,
+          }))
+          .sort((a, b) => b.faltasHoje - a.faltasHoje || a.nome.localeCompare(b.nome));
+
+        setAlunosComFaltasHoje(lista);
+      } catch (erro) {
+        console.log("Erro ao carregar alunos com faltas hoje:", erro.message);
+        setAlunosComFaltasHoje([]);
+      }
+    });
+
+    return () => unsubAlunos();
   }, [user, userData]);
 
   useEffect(() => {
@@ -630,6 +745,26 @@ export default function DashboardScreen() {
             </View>
           </View>
 
+          <View style={{ marginTop: 20, backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 20 }}>
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <ClipboardList size={16} color="#F87171" />
+                <Text style={{ color: cores.texto, fontWeight: "700", fontSize: 15 }}>Alunos com faltas hoje</Text>
+              </View>
+              <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>{alunosComFaltasHoje.filter((aluno) => aluno.faltasHoje > 0).length} com registo</Text>
+            </View>
+
+            {alunosComFaltasHoje.length === 0 ? (
+              <Text style={{ color: cores.textoSecundario, fontSize: 13 }}>Ainda não há alunos com faltas registadas hoje.</Text>
+            ) : (
+              <View>
+                {alunosComFaltasHoje.map((aluno) => (
+                  <AlunoFaltaHojeItem key={aluno.id} aluno={aluno} cores={cores} />
+                ))}
+              </View>
+            )}
+          </View>
+
           <View style={{ height: 40 }} />
         </ScrollView>
       </View>
@@ -769,6 +904,30 @@ export default function DashboardScreen() {
               </View>
             </TouchableOpacity>
           </View>
+
+          {role === "admin" && (
+            <View className="px-6 mb-3">
+              <View style={{ backgroundColor: cores.cartao, borderWidth: 1, borderColor: cores.borda, borderRadius: 16, padding: 16 }}>
+                <View className="flex-row justify-between items-center mb-3">
+                  <View className="flex-row items-center" style={{ gap: 8 }}>
+                    <ClipboardList size={16} color="#F87171" />
+                    <Text style={{ color: cores.texto, fontWeight: "600" }}>Alunos com faltas hoje</Text>
+                  </View>
+                  <Text style={{ color: cores.textoSecundario, fontSize: 11 }}>{alunosComFaltasHoje.filter((aluno) => aluno.faltasHoje > 0).length} com registo</Text>
+                </View>
+
+                {alunosComFaltasHoje.length === 0 ? (
+                  <Text style={{ color: cores.textoSecundario, fontSize: 12 }}>Ainda não há alunos com faltas registadas hoje.</Text>
+                ) : (
+                  <View>
+                    {alunosComFaltasHoje.map((aluno) => (
+                      <AlunoFaltaHojeItem key={aluno.id} aluno={aluno} cores={cores} />
+                    ))}
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
         </>
       )}
 
