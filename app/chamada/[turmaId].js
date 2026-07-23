@@ -4,7 +4,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { collection, query, where, onSnapshot, addDoc } from "firebase/firestore";
 import { db } from "../../firebaseConfig";
 import { useAuth } from "../../context/AuthContext";
-import { notificarFalta, notificarAtraso } from "../../utils/criarNotificacoes";
+import { notificarFalta, notificarAtraso, notificarPresenca } from "../../utils/criarNotificacoes";
 
 const ESTADOS = [
   { key: "presente", label: "Presente", cor: "bg-emerald-600" },
@@ -60,8 +60,8 @@ export default function ChamadaScreen() {
       );
       const resultados = await Promise.all(promessas);
 
-      // dispara notificações para faltas e atrasos — não bloqueia o ecrã,
-      // corre em paralelo e só regista no log se alguma falhar
+      // dispara notificações para presença, faltas e atrasos — não bloqueia
+      // o ecrã, corre em paralelo e só regista no log se alguma falhar
       alunos.forEach((aluno, index) => {
         const estado = presencas[aluno.id];
         const presencaId = resultados[index].id;
@@ -73,6 +73,10 @@ export default function ChamadaScreen() {
         } else if (estado === "atraso") {
           notificarAtraso(aluno, presencaId).catch((erro) =>
             console.log(`Erro ao notificar atraso de ${aluno.nome}:`, erro)
+          );
+        } else if (estado === "presente") {
+          notificarPresenca(aluno, presencaId).catch((erro) =>
+            console.log(`Erro ao notificar presença de ${aluno.nome}:`, erro)
           );
         }
       });
